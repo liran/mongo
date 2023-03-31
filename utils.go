@@ -3,37 +3,45 @@ package mongo
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/iancoleman/strcase"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 type Map map[string]any
 
 func GetModelName(model any) string {
-	modelVal := reflect.ValueOf(model)
-	k := modelVal.Kind()
-	for k == reflect.Pointer || k == reflect.UnsafePointer {
-		if modelVal.IsNil() {
-			return ""
-		}
-		modelVal = modelVal.Elem()
-		k = modelVal.Kind()
-	}
-	if k != reflect.Struct {
+	v := reflect.ValueOf(model)
+	k := v.Kind()
+	if k == reflect.Invalid {
 		return ""
 	}
+	if k == reflect.Pointer || k == reflect.UnsafePointer {
+		if v.IsNil() {
+			return ""
+		}
+		v = v.Elem()
+	}
 
-	return ToSnake(modelVal.Type().Name())
+	var name string
+	// general data type，such as: int float bool  string .....
+	if k >= 1 && k <= 16 || k == 24 {
+		name = fmt.Sprintf("%v", model)
+	} else {
+		name = v.Type().Name()
+	}
+	return ToSnake(name)
 }
 
 func ToSnake(text string) string {
 	return strcase.ToSnakeWithIgnore(text, ".")
 }
 
-func GetIdFilter(id any) Map {
-	return Map{"_id": id}
+func GetIdFilter(id any) any {
+	return bson.D{{Key: "_id", Value: id}}
 }
 
 func Pointer[T any](v T) *T {
@@ -77,7 +85,7 @@ func GetValueOfModelPrimaryKey(model any) any {
 	return nil
 }
 
-func NewModel(model any) any {
+func NewModelType(model any) any {
 	modelVal := reflect.ValueOf(model)
 	k := modelVal.Kind()
 	for k == reflect.Pointer || k == reflect.UnsafePointer {
@@ -113,14 +121,18 @@ func ToBytes(data any) []byte {
 	return value
 }
 
+func ToEntity[T any](val any) *T {
+	o := new(T)
+	if err := json.Unmarshal(ToBytes(val), o); err != nil {
+		panic(err)
+	}
+	return o
+}
+
 func ToEntities[T any](items []any) []*T {
 	var os []*T
 	for _, v := range items {
-		o := new(T)
-		if err := json.Unmarshal(ToBytes(v), o); err != nil {
-			panic(err)
-		}
-		os = append(os, o)
+		os = append(os, ToEntity[T](v))
 	}
 	return os
 }
