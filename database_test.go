@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"testing"
+
+	"github.com/pkg/errors"
 )
 
 func TestDatabase(t *testing.T) {
@@ -14,44 +16,74 @@ func TestDatabase(t *testing.T) {
 		ID         string `db:"pk" bson:"_id"`
 		Name       string
 		Age        int64
-		OrderCount string
+		OrderCount string `bson:"order_count"`
 	}
-
-	// type Doc struct {
-	// 	No string
-	// }
-
-	user := &User{ID: "2", Name: "Name", Age: 1}
-	// doc := &Doc{No: "222"}
-
 	ctx := context.Background()
 
 	// get not found
-	// err := db.Txn(ctx, func(txn *Txn) error {
-	// 	a := &User{}
-	// 	err := txn.Model(user).Unmarshal("1", a)
-	// 	return err
-	// }, false)
-	// if err != nil && !errors.Is(err, ErrNotFoundModel) {
-	// 	t.Fatal(err)
-	// }
+	err := db.Txn(ctx, func(txn *Txn) error {
+		a := &User{}
+		return txn.Model(a).Unmarshal("1", a)
+	}, false)
+	if err != nil && !errors.Is(err, ErrNotFoundModel) {
+		t.Fatal(err)
+	}
 
 	// set
-	err := db.Txn(ctx, func(txn *Txn) error {
+	err = db.Txn(ctx, func(txn *Txn) error {
+		user := &User{ID: "3", Name: "Name", Age: 1}
+
 		err := txn.Model(user).Set(user)
 		if err != nil {
 			return err
 		}
+		return nil
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		var u User
-		err = txn.Model(user).Unmarshal(user.ID, &u)
+	// update
+	err = db.Txn(ctx, func(txn *Txn) error {
+		return txn.Model("user").Update("2", Map().Set("lala", 3).Set("jj", "林俊杰"))
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// pagination
+	err = db.Txn(ctx, func(txn *Txn) error {
+		total, list, err := txn.Model("user").Pagination(nil, nil, 1, 10)
 		if err != nil {
 			return err
 		}
-		log.Printf("%+v", u)
-
+		log.Println("total:", total)
+		users := ToEntities[User](list)
+		for _, user := range users {
+			log.Printf("id: %s, name: %s", user.ID, user.Name)
+		}
 		return nil
-	}, true)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// list
+	err = db.Txn(ctx, func(txn *Txn) error {
+		return txn.Model("user").List(nil, 1, func(m any, total int64) error {
+			user := ToEntity[User](m)
+			log.Printf("total: %d, id: %s, name: %s", total, user.ID, user.Name)
+			return nil
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// del
+	err = db.Txn(ctx, func(txn *Txn) error {
+		return txn.Model("user").Del("1")
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

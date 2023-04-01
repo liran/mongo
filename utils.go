@@ -1,8 +1,6 @@
 package mongo
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -11,7 +9,26 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-type Map map[string]any
+type M bson.M
+
+func (m M) Set(k string, v any) M {
+	m[k] = v
+	return m
+}
+
+func (m M) Del(k string) M {
+	delete(m, k)
+	return m
+}
+
+func (m M) Get(k string) (any, bool) {
+	val, ok := m[k]
+	return val, ok
+}
+
+func Map() M {
+	return make(M)
+}
 
 func GetModelName(model any) string {
 	v := reflect.ValueOf(model)
@@ -102,28 +119,13 @@ func NewModelType(model any) any {
 	return reflect.New(modelVal.Type()).Interface()
 }
 
-func ToBytes(data any) []byte {
-	var value []byte
-	switch v := data.(type) {
-	case []byte:
-		value = v
-	case string: // Prevent repeated double quotes in the string
-		value = []byte(v)
-	default:
-		// no encode html tag
-		buffer := &bytes.Buffer{}
-		encoder := json.NewEncoder(buffer)
-		encoder.SetEscapeHTML(false)
-		encoder.Encode(data)
-		buffer.Truncate(buffer.Len() - 1) // remove suffix "\n"
-		value = buffer.Bytes()
-	}
-	return value
-}
-
 func ToEntity[T any](val any) *T {
 	o := new(T)
-	if err := bson.Unmarshal(ToBytes(val), o); err != nil {
+	raw, err := bson.Marshal(val)
+	if err != nil {
+		panic(err)
+	}
+	if err := bson.Unmarshal(raw, o); err != nil {
 		panic(err)
 	}
 	return o
