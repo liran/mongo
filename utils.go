@@ -123,7 +123,7 @@ func ToBytes(data any) []byte {
 
 func ToEntity[T any](val any) *T {
 	o := new(T)
-	if err := json.Unmarshal(ToBytes(val), o); err != nil {
+	if err := bson.Unmarshal(ToBytes(val), o); err != nil {
 		panic(err)
 	}
 	return o
