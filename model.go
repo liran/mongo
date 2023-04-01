@@ -51,11 +51,10 @@ func (m *Model) Unmarshal(id, model any) error {
 	err := res.Decode(model)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return ErrNotFound
+			return ErrNotFoundModel
 		}
-		return err
 	}
-	return nil
+	return err
 }
 
 func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64, list []any, err error) {

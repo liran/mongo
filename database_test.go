@@ -7,7 +7,7 @@ import (
 )
 
 func TestDatabase(t *testing.T) {
-	db := NewDatabase("mongodb://172.31.10.100:27017/", "test")
+	db := NewDatabase("mongodb://172.31.10.100:27017/?directConnection=true", "test")
 	defer db.Close()
 
 	type User struct {
@@ -21,17 +21,20 @@ func TestDatabase(t *testing.T) {
 	// 	No string
 	// }
 
-	user := &User{ID: "4", Name: "Name", Age: 1}
+	user := &User{ID: "2", Name: "Name", Age: 1}
 	// doc := &Doc{No: "222"}
 
 	ctx := context.Background()
 
 	// get not found
 	// err := db.Txn(ctx, func(txn *Txn) error {
-	// 	_, err := txn.Model(user).Get("1")
+	// 	a := &User{}
+	// 	err := txn.Model(user).Unmarshal("1", a)
 	// 	return err
 	// }, false)
-	// assert.ErrorIs(t, err, ErrNotFound)
+	// if err != nil && !errors.Is(err, ErrNotFoundModel) {
+	// 	t.Fatal(err)
+	// }
 
 	// set
 	err := db.Txn(ctx, func(txn *Txn) error {

@@ -20,9 +20,17 @@ func (t *Database) Close() {
 
 func (t *Database) Txn(ctx context.Context, fn func(txn *Txn) error, multiDoc ...bool) error {
 	if len(multiDoc) > 0 && multiDoc[0] {
-		return t.client.UseSession(ctx, func(sc mongo.SessionContext) error {
-			return fn(&Txn{ctx: sc, db: t})
+		session, err := t.client.StartSession()
+		if err != nil {
+			return err
+		}
+		defer session.EndSession(ctx)
+
+		_, err = session.WithTransaction(ctx, func(sc mongo.SessionContext) (any, error) {
+			err := fn(&Txn{ctx: sc, db: t})
+			return nil, err
 		})
+		return err
 	}
 
 	return fn(&Txn{ctx: ctx, db: t})
