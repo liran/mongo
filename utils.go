@@ -9,6 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+const Tag = "db"
+
 type M bson.M
 
 func (m M) Set(k string, v any) M {
@@ -65,7 +67,7 @@ func Pointer[T any](v T) *T {
 	return &v
 }
 
-// tag `db:"pk"`
+// tag `db:"pk"` or `bson:"_id"`
 func GetValueOfModelPrimaryKey(model any) any {
 	modelValue := reflect.ValueOf(model)
 	k := modelValue.Kind()
@@ -85,21 +87,97 @@ func GetValueOfModelPrimaryKey(model any) any {
 	for i := 0; i < modelType.NumField(); i++ {
 		fieldType := modelType.Field(i)
 
+		// `db:"pk"`
+		tag := fieldType.Tag.Get(Tag)
+		if tag != "" {
+			dbTags := ParseTag(tag)
+			_, hasPrimaryKey := dbTags["pk"]
+			if hasPrimaryKey {
+				return modelValue.Field(i).Interface()
+			}
+		}
+
+		// `bson:"_id"`
+		tag = fieldType.Tag.Get("bson")
+		if tag != "" && strings.HasPrefix(tag, "_id") {
+			return modelValue.Field(i).Interface()
+		}
+	}
+	return nil
+}
+
+func ParseModelIndex(model any) (modelName string, indexes map[string]bool) {
+	indexes = make(map[string]bool)
+
+	modelValue := reflect.ValueOf(model)
+	k := modelValue.Kind()
+	for k == reflect.Pointer || k == reflect.UnsafePointer {
+		if modelValue.IsNil() {
+			return
+		}
+		modelValue = modelValue.Elem()
+		k = modelValue.Kind()
+	}
+	if k != reflect.Struct {
+		return
+	}
+
+	// Iterate over all available fields and read the tag value
+	modelType := modelValue.Type()
+
+	modelName = ToSnake(modelType.Name())
+
+	for i := 0; i < modelType.NumField(); i++ {
+		fieldType := modelType.Field(i)
+
 		// Get the field tag value
-		tag := fieldType.Tag.Get("db")
+		tag := fieldType.Tag.Get(Tag)
 		if tag == "" {
 			continue
 		}
 
-		// if specified manually, use the specified name
-		multTypes := strings.Split(strings.Trim(tag, ", ;"), ",")
-		for _, v := range multTypes {
-			if v == "pk" {
-				return modelValue.Field(i).Interface()
+		dbTags := ParseTag(tag)
+		_, hasIndex := dbTags["index"]
+		_, hasUnique := dbTags["unique"]
+		if !hasIndex && !hasUnique {
+			continue
+		}
+
+		indexName := fieldType.Tag.Get("bson")
+		if indexName != "" {
+			indexName = strings.Trim(strings.ReplaceAll(indexName, "omitempty", ""), " ,")
+		}
+		if indexName == "" {
+			indexName = strings.ToLower(fieldType.Name)
+		}
+
+		indexes[indexName] = hasUnique
+	}
+
+	return
+}
+
+func ParseTag(tag string) map[string]string {
+	m := make(map[string]string)
+
+	multTypes := strings.Split(strings.Trim(tag, ", ;"), ",")
+	for _, v := range multTypes {
+		arr := strings.Split(v, "=")
+		if len(arr) > 0 {
+			k := strings.TrimSpace(arr[0])
+			if k == "" {
+				continue
 			}
+
+			val := ""
+			if len(arr) > 1 {
+				val = arr[1]
+			}
+			m[strings.ToLower(k)] = val
 		}
 	}
-	return nil
+
+	return m
 }
 
 func NewModelType(model any) any {

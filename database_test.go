@@ -4,11 +4,12 @@ import (
 	"context"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/pkg/errors"
 )
 
-func TestDatabase(t *testing.T) {
+func TestCRUD(t *testing.T) {
 	db := NewDatabase("mongodb://172.31.10.100:27017/?directConnection=true", "test")
 	defer db.Close()
 
@@ -84,6 +85,25 @@ func TestDatabase(t *testing.T) {
 	err = db.Txn(ctx, func(txn *Txn) error {
 		return txn.Model("user").Del("1")
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestModelIndex(t *testing.T) {
+	db := NewDatabase("mongodb://172.31.10.100:27017/?directConnection=true", "test")
+	defer db.Close()
+
+	type User struct {
+		ID         string     `bson:"_id"`
+		Name       string     `db:"unique"`
+		Age        int64      `db:"index"`
+		OrderCount string     `bson:"order_count"`
+		CreatedAt  *time.Time `bson:"created_at,omitempty" db:"index"`
+	}
+	ctx := context.Background()
+
+	err := db.Index(ctx, &User{})
 	if err != nil {
 		t.Fatal(err)
 	}

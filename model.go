@@ -10,10 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var DefaultSetOption = &options.ReplaceOptions{
-	BypassDocumentValidation: Pointer(true),
-	Upsert:                   Pointer(true),
-}
+var DefaultSetOption = options.Replace().SetUpsert(true).SetBypassDocumentValidation(true)
 
 type Model struct {
 	txn  *Txn

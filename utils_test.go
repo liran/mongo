@@ -26,7 +26,7 @@ func TestGetModelName(t *testing.T) {
 
 func TestGetValueOfModelPrimaryKey(t *testing.T) {
 	type User struct {
-		Name       string `db:"pk"`
+		Name       string `bson:"_id"`
 		Age        int64  `db:"pk"`
 		OrderCount int64
 	}
