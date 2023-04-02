@@ -54,6 +54,14 @@ func (m *Model) Unmarshal(id, model any) error {
 	return err
 }
 
+func (m *Model) Count(filter any) (total int64, err error) {
+	if filter == nil {
+		filter = bson.D{}
+	}
+
+	return m.coll.CountDocuments(m.txn.ctx, filter)
+}
+
 func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64, list []any, err error) {
 	if filter == nil {
 		filter = bson.D{}
