@@ -54,7 +54,7 @@ func (m *Model) Unmarshal(id, model any) error {
 	return err
 }
 
-func (m *Model) Count(filter any) (total int64, err error) {
+func (m *Model) Count(filter any) (count int64, err error) {
 	if filter == nil {
 		filter = bson.D{}
 	}

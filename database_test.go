@@ -81,6 +81,19 @@ func TestCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// count
+	err = db.Txn(ctx, func(txn *Txn) error {
+		count, err := txn.Model("user").Count(nil)
+		if err != nil {
+			return err
+		}
+		log.Println("count:", count)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// del
 	err = db.Txn(ctx, func(txn *Txn) error {
 		return txn.Model("user").Del("1")
