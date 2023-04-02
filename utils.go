@@ -2,8 +2,10 @@ package mongo
 
 import (
 	"fmt"
+	"math/rand"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/iancoleman/strcase"
 	"go.mongodb.org/mongo-driver/bson"
@@ -215,4 +217,20 @@ func ToEntities[T any](items []any) []*T {
 		os = append(os, ToEntity[T](v))
 	}
 	return os
+}
+
+var random = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+// RandInRange returns a random positive integer from an inclusive minimum to an exclusive maximum
+func RandInRange(minInclusive, maxExclusive int) int {
+	return random.Intn(maxExclusive-minInclusive) + minInclusive
+}
+
+func SequentialID() string {
+	text := fmt.Sprintf("%d%d", time.Now().UTC().UnixMicro(), RandInRange(100, 1000))
+	var sb strings.Builder
+	for _, v := range text {
+		sb.WriteRune(v + 49)
+	}
+	return sb.String()
 }
