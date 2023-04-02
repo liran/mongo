@@ -96,7 +96,7 @@ func TestCRUD(t *testing.T) {
 
 	// inc
 	err = db.Txn(ctx, func(txn *Txn) error {
-		return txn.Model("user").Inc("2", "lala", -1)
+		return txn.Model("user").Inc("2", Map().Set("lala", -1).Set("inc", 1))
 	}, true)
 	if err != nil {
 		t.Fatal(err)
