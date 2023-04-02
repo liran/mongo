@@ -109,6 +109,22 @@ func TestCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// first
+	err = db.Txn(ctx, func(txn *Txn) error {
+		res, err := txn.Model("user").First(Map().Set("name", "lirawn"))
+		if err != nil {
+			return err
+		}
+
+		user := ToEntity[User](res)
+		log.Printf("%+v", user)
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestModelIndex(t *testing.T) {

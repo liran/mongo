@@ -48,6 +48,22 @@ func (m *Model) Inc(id, feild string, step int64) error {
 	return err
 }
 
+func (m *Model) First(filter any) (any, error) {
+	if filter == nil {
+		filter = bson.D{}
+	}
+	res := m.coll.FindOne(m.txn.ctx, filter)
+	var v any
+	err := res.Decode(&v)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrNotFoundModel
+		}
+		return nil, err
+	}
+	return v, nil
+}
+
 func (m *Model) Unmarshal(id, model any) error {
 	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id))
 	err := res.Decode(model)
