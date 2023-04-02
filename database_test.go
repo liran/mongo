@@ -94,6 +94,14 @@ func TestCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// inc
+	err = db.Txn(ctx, func(txn *Txn) error {
+		return txn.Model("user").Inc("2", "lala", -1)
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// del
 	err = db.Txn(ctx, func(txn *Txn) error {
 		return txn.Model("user").Del("1")

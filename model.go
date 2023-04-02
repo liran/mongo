@@ -43,6 +43,11 @@ func (m *Model) Update(id, update any) error {
 	return err
 }
 
+func (m *Model) Inc(id, feild string, step int64) error {
+	_, err := m.coll.UpdateByID(m.txn.ctx, id, bson.D{{Key: "$inc", Value: bson.D{{Key: feild, Value: step}}}})
+	return err
+}
+
 func (m *Model) Unmarshal(id, model any) error {
 	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id))
 	err := res.Decode(model)
