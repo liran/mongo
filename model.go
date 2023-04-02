@@ -62,6 +62,11 @@ func (m *Model) Count(filter any) (count int64, err error) {
 	return m.coll.CountDocuments(m.txn.ctx, filter)
 }
 
+func (m *Model) Has(id any) (bool, error) {
+	count, err := m.coll.CountDocuments(m.txn.ctx, GetIdFilter(id), options.Count().SetLimit(1))
+	return count > 0, err
+}
+
 func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64, list []any, err error) {
 	if filter == nil {
 		filter = bson.D{}
