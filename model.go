@@ -18,14 +18,8 @@ type Model struct {
 	coll *mongo.Collection
 }
 
-func (m *Model) Set(model any, id ...any) error {
-	var key any
-	if len(id) > 0 {
-		key = id[0]
-	} else if pk := GetValueOfModelPrimaryKey(model); pk != "" {
-		key = pk
-	}
-
+func (m *Model) Set(model any) error {
+	key := GetValueOfModelPrimaryKey(model)
 	if key == nil || key == "" {
 		return ErrNoID
 	}
