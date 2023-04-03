@@ -69,8 +69,7 @@ func Pointer[T any](v T) *T {
 	return &v
 }
 
-// tag `db:"pk"` or `bson:"_id"`
-func GetValueOfModelPrimaryKey(model any) any {
+func GetID(model any) any {
 	modelValue := reflect.ValueOf(model)
 	k := modelValue.Kind()
 	for k == reflect.Pointer || k == reflect.UnsafePointer {
@@ -80,29 +79,37 @@ func GetValueOfModelPrimaryKey(model any) any {
 		modelValue = modelValue.Elem()
 		k = modelValue.Kind()
 	}
-	if k != reflect.Struct {
-		return nil
-	}
 
-	// Iterate over all available fields and read the tag value
-	modelType := modelValue.Type()
-	for i := 0; i < modelType.NumField(); i++ {
-		fieldType := modelType.Field(i)
+	// tag `db:"pk"` or `bson:"_id"`
+	if k == reflect.Struct {
+		// Iterate over all available fields and read the tag value
+		modelType := modelValue.Type()
+		for i := 0; i < modelType.NumField(); i++ {
+			fieldType := modelType.Field(i)
 
-		// `db:"pk"`
-		tag := fieldType.Tag.Get(Tag)
-		if tag != "" {
-			dbTags := ParseTag(tag)
-			_, hasPrimaryKey := dbTags["pk"]
-			if hasPrimaryKey {
+			// `db:"pk"`
+			tag := fieldType.Tag.Get(Tag)
+			if tag != "" {
+				dbTags := ParseTag(tag)
+				_, hasPrimaryKey := dbTags["pk"]
+				if hasPrimaryKey {
+					return modelValue.Field(i).Interface()
+				}
+			}
+
+			// `bson:"_id"`
+			tag = fieldType.Tag.Get("bson")
+			if tag != "" && strings.HasPrefix(tag, "_id") {
 				return modelValue.Field(i).Interface()
 			}
 		}
+	}
 
-		// `bson:"_id"`
-		tag = fieldType.Tag.Get("bson")
-		if tag != "" && strings.HasPrefix(tag, "_id") {
-			return modelValue.Field(i).Interface()
+	if k == reflect.Map {
+		// take value of "_id"
+		val := modelValue.MapIndex(reflect.ValueOf("_id"))
+		if val.Kind() != reflect.Invalid {
+			return val.Interface()
 		}
 	}
 	return nil

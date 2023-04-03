@@ -19,12 +19,12 @@ type Model struct {
 }
 
 func (m *Model) Set(model any) error {
-	key := GetValueOfModelPrimaryKey(model)
-	if key == nil || key == "" {
+	id := GetID(model)
+	if id == nil || id == "" {
 		return ErrNoID
 	}
 
-	_, err := m.coll.ReplaceOne(m.txn.ctx, GetIdFilter(key), model, DefaultSetOption)
+	_, err := m.coll.ReplaceOne(m.txn.ctx, GetIdFilter(id), model, DefaultSetOption)
 	return err
 }
 
