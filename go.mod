@@ -6,6 +6,7 @@ require (
 	github.com/iancoleman/strcase v0.2.0
 	github.com/pkg/errors v0.9.1
 	go.mongodb.org/mongo-driver v1.11.3
+	go.uber.org/atomic v1.10.0
 	golang.org/x/sync v0.1.0
 )
 

@@ -199,9 +199,9 @@ func NewModelType(model any) any {
 	return reflect.New(modelVal.Type()).Interface()
 }
 
-func ToEntity[T any](val any) *T {
+func ToEntity[T any](m M) *T {
 	o := new(T)
-	raw, err := bson.Marshal(val)
+	raw, err := bson.Marshal(m)
 	if err != nil {
 		panic(err)
 	}
@@ -211,7 +211,7 @@ func ToEntity[T any](val any) *T {
 	return o
 }
 
-func ToEntities[T any](items []any) []*T {
+func ToEntities[T any](items []M) []*T {
 	var os []*T
 	for _, v := range items {
 		os = append(os, ToEntity[T](v))

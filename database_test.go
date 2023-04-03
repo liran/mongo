@@ -32,7 +32,7 @@ func TestCRUD(t *testing.T) {
 
 	// set
 	err = db.Txn(ctx, func(txn *Txn) error {
-		user := &User{ID: "3", Name: "Name", Age: 1}
+		user := &User{ID: "2", Name: "Name2", Age: 2}
 
 		err := txn.Model(user).Set(user)
 		if err != nil {
@@ -46,7 +46,22 @@ func TestCRUD(t *testing.T) {
 
 	// update
 	err = db.Txn(ctx, func(txn *Txn) error {
-		return txn.Model("user").Update("2", Map().Set("lala", 3).Set("jj", "林俊杰"))
+		return txn.Model("user").Update("5", Map().Set("lala", 3).Set("jj", "林俊杰"))
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get
+	err = db.Txn(ctx, func(txn *Txn) error {
+		m, err := txn.Model("user").Get("3")
+		if err != nil {
+			return err
+		}
+
+		user := ToEntity[User](m)
+		log.Printf("%+v", user)
+		return nil
 	}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +86,7 @@ func TestCRUD(t *testing.T) {
 
 	// list
 	err = db.Txn(ctx, func(txn *Txn) error {
-		return txn.Model("user").List(nil, 1, func(m any, total int64) error {
+		return txn.Model("user").List(nil, 1, func(m M, total int64) error {
 			user := ToEntity[User](m)
 			log.Printf("total: %d, id: %s, name: %s", total, user.ID, user.Name)
 			return nil
@@ -112,7 +127,7 @@ func TestCRUD(t *testing.T) {
 
 	// first
 	err = db.Txn(ctx, func(txn *Txn) error {
-		res, err := txn.Model("user").First(Map().Set("name", "lirawn"))
+		res, err := txn.Model("user").First(nil, Map().Set("age", -1))
 		if err != nil {
 			return err
 		}

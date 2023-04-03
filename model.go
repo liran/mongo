@@ -7,6 +7,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -48,12 +49,23 @@ func (m *Model) Inc(id, fields any) error {
 	return err
 }
 
-func (m *Model) First(filter any) (any, error) {
+func (m *Model) Get(id any) (M, error) {
+	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id))
+	doc := Map()
+	err := res.Decode(&doc)
+	return doc, err
+}
+
+func (m *Model) First(filter, sort any) (M, error) {
 	if filter == nil {
 		filter = bson.D{}
 	}
-	res := m.coll.FindOne(m.txn.ctx, filter)
-	var v any
+	opt := options.FindOne()
+	if sort != nil {
+		opt.SetSort(sort)
+	}
+	res := m.coll.FindOne(m.txn.ctx, filter, opt)
+	var v M
 	err := res.Decode(&v)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -79,7 +91,6 @@ func (m *Model) Count(filter any) (count int64, err error) {
 	if filter == nil {
 		filter = bson.D{}
 	}
-
 	return m.coll.CountDocuments(m.txn.ctx, filter)
 }
 
@@ -88,7 +99,7 @@ func (m *Model) Has(id any) (bool, error) {
 	return count > 0, err
 }
 
-func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64, list []any, err error) {
+func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64, list []M, err error) {
 	if filter == nil {
 		filter = bson.D{}
 	}
@@ -118,12 +129,11 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64,
 	if err != nil {
 		return
 	}
-
 	err = cur.All(m.txn.ctx, &list)
 	return
 }
 
-func (m *Model) List(filter any, concurrency int, cb func(m any, total int64) error) error {
+func (m *Model) List(filter any, concurrency int, cb func(m M, total int64) error) error {
 	if filter == nil {
 		filter = bson.D{}
 	}
@@ -137,6 +147,7 @@ func (m *Model) List(filter any, concurrency int, cb func(m any, total int64) er
 
 	var pageSize int64 = 200
 
+	var stopLoop atomic.Bool
 	var eg errgroup.Group
 	eg.SetLimit(concurrency)
 	handle := func(page int64) {
@@ -147,12 +158,13 @@ func (m *Model) List(filter any, concurrency int, cb func(m any, total int64) er
 				return err
 			}
 
-			var ps []any
+			var ps []M
 			if err := cur.All(m.txn.ctx, &ps); err != nil {
 				return err
 			}
 			for _, v := range ps {
 				if err = cb(v, total); err != nil {
+					stopLoop.Store(true)
 					return err
 				}
 			}
@@ -163,6 +175,9 @@ func (m *Model) List(filter any, concurrency int, cb func(m any, total int64) er
 	var page int64
 	pages := int64(math.Ceil(float64(total) / float64(pageSize)))
 	for page = 1; page <= pages; page++ {
+		if stopLoop.Load() {
+			break
+		}
 		handle(page)
 	}
 
