@@ -83,7 +83,7 @@ func (m *Model) Unmarshal(id, model any) error {
 
 func (m *Model) Count(filter any) (count int64, err error) {
 	if filter == nil {
-		filter = bson.D{}
+		return m.coll.EstimatedDocumentCount(m.txn.ctx)
 	}
 	return m.coll.CountDocuments(m.txn.ctx, filter)
 }
@@ -94,11 +94,7 @@ func (m *Model) Has(id any) (bool, error) {
 }
 
 func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64, list []M, err error) {
-	if filter == nil {
-		filter = bson.D{}
-	}
-
-	total, err = m.coll.CountDocuments(m.txn.ctx, filter)
+	total, err = m.Count(filter)
 	if err != nil {
 		return
 	}
@@ -119,6 +115,10 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64,
 	if sort != nil {
 		opt.SetSort(sort)
 	}
+
+	if filter == nil {
+		filter = bson.D{}
+	}
 	cur, err := m.coll.Find(m.txn.ctx, filter, opt)
 	if err != nil {
 		return
@@ -128,15 +128,16 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64,
 }
 
 func (m *Model) List(filter any, concurrency int, cb func(m M, total int64) error) error {
-	if filter == nil {
-		filter = bson.D{}
-	}
-	total, err := m.coll.CountDocuments(m.txn.ctx, filter)
+	total, err := m.Count(filter)
 	if err != nil {
 		return err
 	}
 	if total < 1 {
 		return nil
+	}
+
+	if filter == nil {
+		filter = bson.D{}
 	}
 
 	var pageSize int64 = 200

@@ -10,7 +10,7 @@ import (
 )
 
 func TestCRUD(t *testing.T) {
-	db := NewDatabase("mongodb://172.31.10.100:27017/?directConnection=true", "test")
+	db := NewDatabase("mongodb://172.31.9.163:27017/?directConnection=true", "test")
 	defer db.Close()
 
 	type User struct {
@@ -159,4 +159,21 @@ func TestModelIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestCount(t *testing.T) {
+	db := NewDatabase("mongodb://172.31.9.163:27017/?directConnection=true", "shopify")
+	defer db.Close()
+
+	uptime := time.Now()
+	ctx := context.Background()
+	err := db.Txn(ctx, func(txn *Txn) error {
+		ok, err := txn.Model("host").Count(nil)
+		log.Println(ok)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Printf("time taken: %s", time.Since(uptime))
 }
