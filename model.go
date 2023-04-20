@@ -3,6 +3,7 @@ package mongo
 import (
 	"errors"
 	"math"
+	"reflect"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -82,7 +83,12 @@ func (m *Model) Unmarshal(id, model any) error {
 }
 
 func (m *Model) Count(filter any) (count int64, err error) {
-	if filter == nil {
+	val := reflect.ValueOf(filter)
+	if val.Kind() == reflect.Invalid ||
+		((val.Kind() == reflect.Map ||
+			val.Kind() == reflect.Slice ||
+			val.Kind() == reflect.Array) &&
+			val.Len() < 1) {
 		return m.coll.EstimatedDocumentCount(m.txn.ctx)
 	}
 	return m.coll.CountDocuments(m.txn.ctx, filter)
