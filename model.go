@@ -48,7 +48,13 @@ func (m *Model) Get(id any) (M, error) {
 	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id))
 	doc := Map()
 	err := res.Decode(&doc)
-	return doc, err
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrNotFoundModel
+		}
+		return nil, err
+	}
+	return doc, nil
 }
 
 func (m *Model) First(filter, sort any) (M, error) {
