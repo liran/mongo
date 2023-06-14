@@ -57,3 +57,32 @@ func TestSequentialID(t *testing.T) {
 		log.Println(SequentialID())
 	}
 }
+
+func TestParseModelIndex(t *testing.T) {
+	type User struct {
+		Name       string `json:"name" bson:"_id,omitempty"`
+		Age        int64  `json:"age" bson:"age,omitempty" db:"index"`
+		OrderCount int64  `json:"order_count" bson:"order_count,omitempty"`
+	}
+
+	type Student struct {
+		*User `json:"user"`
+
+		Class string `json:"class" db:"index"`
+	}
+
+	type Teacher struct {
+		User `json:"user"`
+
+		Class string `json:"class" db:"index"`
+	}
+
+	name, indexes := ParseModelIndex(&Student{})
+	log.Println(name, indexes)
+
+	name, indexes = ParseModelIndex(&Student{User: &User{Name: "liran"}})
+	log.Println(name, indexes)
+
+	name, indexes = ParseModelIndex(&Teacher{})
+	log.Println(name, indexes)
+}

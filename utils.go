@@ -97,6 +97,7 @@ func GetID(model any) any {
 				if id != nil {
 					return id
 				}
+				continue
 			}
 
 			// `db:"pk"`
@@ -150,6 +151,19 @@ func ParseModelIndex(model any) (modelName string, indexes map[string]bool) {
 
 	for i := 0; i < modelType.NumField(); i++ {
 		fieldType := modelType.Field(i)
+		fieldValue := modelValue.Field(i)
+		fieldKind := fieldValue.Kind()
+
+		// recursive search
+		if fieldKind == reflect.Pointer ||
+			fieldKind == reflect.UnsafePointer ||
+			fieldKind == reflect.Struct {
+			_, innerIndexes := ParseModelIndex(fieldValue.Interface())
+			for k, v := range innerIndexes {
+				indexes[k] = v
+			}
+			continue
+		}
 
 		// Get the field tag value
 		tag := fieldType.Tag.Get(Tag)
