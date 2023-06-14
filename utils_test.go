@@ -30,7 +30,17 @@ func TestGetID(t *testing.T) {
 		Age        int64  `json:"age" bson:"age,omitempty"`
 		OrderCount int64  `json:"order_count" bson:"order_count,omitempty"`
 	}
+
+	type Parent struct {
+		*User `json:"user"`
+	}
+
 	pk := GetID(&User{Name: "liran", Age: 132})
+	if pk != "liran" {
+		t.Fatal(pk)
+	}
+
+	pk = GetID(&Parent{User: &User{Name: "liran", Age: 132}})
 	if pk != "liran" {
 		t.Fatal(pk)
 	}

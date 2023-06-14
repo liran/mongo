@@ -86,6 +86,18 @@ func GetID(model any) any {
 		modelType := modelValue.Type()
 		for i := 0; i < modelType.NumField(); i++ {
 			fieldType := modelType.Field(i)
+			fieldValue := modelValue.Field(i)
+			fieldKind := fieldValue.Kind()
+
+			// recursive search
+			if fieldKind == reflect.Pointer ||
+				fieldKind == reflect.UnsafePointer ||
+				fieldKind == reflect.Struct {
+				id := GetID(fieldValue.Interface())
+				if id != nil {
+					return id
+				}
+			}
 
 			// `db:"pk"`
 			tag := fieldType.Tag.Get(Tag)
