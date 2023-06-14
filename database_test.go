@@ -155,7 +155,7 @@ func TestModelIndex(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	err := db.Index(ctx, &User{})
+	err := db.Indexes(ctx, &User{})
 	if err != nil {
 		t.Fatal(err)
 	}

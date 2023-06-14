@@ -38,26 +38,30 @@ func (d *Database) Txn(ctx context.Context, fn func(txn *Txn) error, multiDoc ..
 	return fn(&Txn{ctx: ctx, db: d})
 }
 
-func (d *Database) Index(ctx context.Context, model any) error {
-	name, indexes := ParseModelIndex(model)
-	if name == "" {
-		return ErrInvalidModelName
-	}
-	if len(indexes) < 1 {
-		return nil
-	}
-
-	var indexModels []mongo.IndexModel
-	for indexName, unique := range indexes {
-		im := mongo.IndexModel{Keys: bson.D{{Key: indexName, Value: 1}}}
-		if unique {
-			im.Options = options.Index().SetUnique(true)
+func (d *Database) Indexes(ctx context.Context, models ...any) error {
+	for _, model := range models {
+		name, indexes := ParseModelIndex(model)
+		if name == "" {
+			return ErrInvalidModelName
 		}
-		indexModels = append(indexModels, im)
-	}
+		if len(indexes) < 1 {
+			continue
+		}
 
-	_, err := d.Collection(name).Indexes().CreateMany(ctx, indexModels)
-	return err
+		var indexModels []mongo.IndexModel
+		for indexName, unique := range indexes {
+			im := mongo.IndexModel{Keys: bson.D{{Key: indexName, Value: 1}}}
+			if unique {
+				im.Options = options.Index().SetUnique(true)
+			}
+			indexModels = append(indexModels, im)
+		}
+		_, err := d.Collection(name).Indexes().CreateMany(ctx, indexModels)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func NewDatabase(url string, name string) *Database {
