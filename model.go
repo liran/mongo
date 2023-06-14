@@ -50,7 +50,7 @@ func (m *Model) Get(id any) (M, error) {
 	err := res.Decode(&doc)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, ErrNotFoundModel
+			return nil, ErrRecordNotFound
 		}
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (m *Model) First(filter, sort any) (M, error) {
 	err := res.Decode(&v)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, ErrNotFoundModel
+			return nil, ErrRecordNotFound
 		}
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (m *Model) Unmarshal(id, model any) error {
 	err := res.Decode(model)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return ErrNotFoundModel
+			return ErrRecordNotFound
 		}
 	}
 	return err

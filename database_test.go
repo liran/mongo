@@ -26,7 +26,7 @@ func TestCRUD(t *testing.T) {
 		a := &User{}
 		return txn.Model(a).Unmarshal("1", a)
 	}, false)
-	if err != nil && !errors.Is(err, ErrNotFoundModel) {
+	if err != nil && !errors.Is(err, ErrRecordNotFound) {
 		t.Fatal(err)
 	}
 
