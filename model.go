@@ -12,8 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var DefaultSetOption = options.Replace().SetUpsert(true).SetBypassDocumentValidation(true)
-
 type Model struct {
 	txn  *Txn
 	coll *mongo.Collection
@@ -25,7 +23,7 @@ func (m *Model) Set(model any) error {
 		return ErrNoID
 	}
 
-	_, err := m.coll.ReplaceOne(m.txn.ctx, GetIdFilter(id), model, DefaultSetOption)
+	_, err := m.coll.InsertOne(m.txn.ctx, model)
 	return err
 }
 

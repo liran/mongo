@@ -17,7 +17,7 @@ func TestCRUD(t *testing.T) {
 		ID         string `bson:"_id"`
 		Name       string
 		Age        int64
-		OrderCount string `bson:"order_count"`
+		OrderCount string `bson:"order_count,omitempty"`
 	}
 	ctx := context.Background()
 
@@ -32,7 +32,21 @@ func TestCRUD(t *testing.T) {
 
 	// set
 	err = db.Txn(ctx, func(txn *Txn) error {
-		user := &User{ID: "2", Name: "Name2", Age: 2}
+		user := &User{ID: "2", Name: "Name2", Age: 2, OrderCount: "1234"}
+
+		err := txn.Model(user).Set(user)
+		if err != nil {
+			return err
+		}
+		return nil
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// set1
+	err = db.Txn(ctx, func(txn *Txn) error {
+		user := &User{ID: "2", Name: "Name3", Age: 1}
 
 		err := txn.Model(user).Set(user)
 		if err != nil {
