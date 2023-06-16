@@ -20,6 +20,7 @@ func (d *Database) Close() {
 	}
 }
 
+// By default, MongoDB will automatically abort any multi-document transaction that runs for more than 60 seconds.
 func (d *Database) Txn(ctx context.Context, fn func(txn *Txn) error, multiDoc ...bool) error {
 	if len(multiDoc) > 0 && multiDoc[0] {
 		session, err := d.client.StartSession()
