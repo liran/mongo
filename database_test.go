@@ -10,11 +10,11 @@ import (
 )
 
 func TestCRUD(t *testing.T) {
-	db := NewDatabase("mongodb://172.31.9.163:27017/?directConnection=true", "test")
+	db := NewDatabase("mongodb://172.31.9.163:27017/?directConnection=true", "mongo_test")
 	defer db.Close()
 
 	type User struct {
-		ID         string `db:"pk" bson:"_id"`
+		ID         string `bson:"_id"`
 		Name       string
 		Age        int64
 		OrderCount string `bson:"order_count"`
@@ -40,14 +40,6 @@ func TestCRUD(t *testing.T) {
 		}
 		return nil
 	}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// update
-	err = db.Txn(ctx, func(txn *Txn) error {
-		return txn.Model("user").Update("5", Map().Set("lala", 3).Set("jj", "林俊杰"))
-	}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,4 +168,107 @@ func TestCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	log.Printf("time taken: %s", time.Since(uptime))
+}
+
+func TestUpdate(t *testing.T) {
+	db := NewDatabase("mongodb://172.31.9.163:27017/?directConnection=true", "mongo_test")
+	defer db.Close()
+
+	type Video struct {
+		UID          string     `json:"uid" bson:"_id"`
+		AuthorUID    string     `json:"author_uid" bson:"author_uid" db:"index"`
+		ID           string     `json:"id" bson:"id"`
+		URL          string     `json:"url" bson:"url,omitempty"`
+		MetadataS3   string     `json:"metadata_s3" bson:"metadata_s3,omitempty"`
+		Description  string     `json:"description" bson:"description,omitempty"`
+		Cover        string     `json:"cover" bson:"cover,omitempty"`
+		CoverS3      string     `json:"cover_s3" bson:"cover_s3,omitempty"`
+		Video        string     `json:"video,omitempty" bson:"video,omitempty"`
+		VideoS3      string     `json:"video_s3,omitempty" bson:"video_s3,omitempty"`
+		ShareCount   int        `json:"share_count" bson:"share_count,omitempty"`
+		CommentCount int        `json:"comment_count" bson:"comment_count,omitempty"`
+		PlayCount    int        `json:"play_count" bson:"play_count,omitempty"`
+		CollectCount int        `json:"collect_count" bson:"collect_count,omitempty"`
+		Expired      bool       `json:"expired" bson:"expired,omitempty"`
+		CreatedAt    *time.Time `json:"created_at" bson:"created_at,omitempty"`
+
+		TextInCover string   `json:"text_in_cover,omitempty" bson:"text_in_cover,omitempty"`
+		Whatsapps   []string `json:"whatsapps" bson:"whatsapps,omitempty"`
+		Emails      []string `json:"emails" bson:"emails,omitempty"`
+	}
+
+	video := &Video{
+		UID:       "uid",
+		ID:        "id",
+		Video:     "123",
+		Whatsapps: []string{"whatsapp1"},
+		Emails:    []string{"email"},
+	}
+
+	ctx := context.Background()
+
+	// set
+	err := db.Txn(ctx, func(txn *Txn) error {
+		return txn.Model(video).Set(video)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// update
+	err = db.Txn(ctx, func(txn *Txn) error {
+		update := &Video{UID: "uid"}
+		update.Video = "456"
+		update.AuthorUID = "author"
+		update.Emails = nil
+		newVideo, err := txn.Model(video).Update(update)
+		if err != nil {
+			return err
+		}
+
+		video = ToEntity[Video](newVideo)
+
+		update1 := Map().Set("_id", "uid").Set("emails", nil).Set("collect_count", 200)
+		newVideo, err = txn.Model(video).Update(update1)
+		if err != nil {
+			return err
+		}
+
+		video = ToEntity[Video](newVideo)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.Txn(ctx, func(txn *Txn) error {
+		video.UID = "uid123"
+		newVideo, err := txn.Model(video).Update(video)
+		if err != nil {
+			return err
+		}
+
+		video = ToEntity[Video](newVideo)
+		return nil
+	})
+	if err != nil {
+		log.Println(err)
+	}
+
+	err = db.Txn(ctx, func(txn *Txn) error {
+		video.UID = "uid"
+		t := time.Now()
+		video.CreatedAt = &t
+		video.Expired = true
+		newVideo, err := txn.Model(video).Update(video)
+		if err != nil {
+			return err
+		}
+
+		video = ToEntity[Video](newVideo)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }

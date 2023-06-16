@@ -34,9 +34,37 @@ func (m *Model) Del(id any) error {
 	return err
 }
 
-func (m *Model) Update(id, update any) error {
-	_, err := m.coll.UpdateByID(m.txn.ctx, id, bson.D{{Key: "$set", Value: update}})
-	return err
+// parameter 'update' can be a structure or a Map containing the primary key
+func (m *Model) Update(update any) (newRecord M, err error) {
+	id := GetID(update)
+	if id == nil || id == "" {
+		return nil, ErrNoID
+	}
+
+	raw, err := bson.Marshal(update)
+	if err != nil {
+		return nil, err
+	}
+	updateMap := Map()
+	if err := bson.Unmarshal(raw, &updateMap); err != nil {
+		return nil, err
+	}
+
+	res := m.coll.FindOneAndUpdate(m.txn.ctx, GetIdFilter(id), bson.D{{Key: "$set", Value: updateMap}})
+	old := Map()
+	err = res.Decode(&old)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, err
+	}
+
+	for k, v := range updateMap {
+		old.Set(k, v)
+	}
+
+	return old, nil
 }
 
 func (m *Model) Inc(id, fields any) error {
