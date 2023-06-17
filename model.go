@@ -23,7 +23,7 @@ func (m *Model) Set(model any) error {
 		return ErrNoID
 	}
 
-	_, err := m.coll.InsertOne(m.txn.ctx, model)
+	_, err := m.coll.ReplaceOne(m.txn.ctx, GetIdFilter(id), model, options.Replace().SetUpsert(true))
 	return err
 }
 
