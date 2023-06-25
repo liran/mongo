@@ -3,6 +3,7 @@ package mongo
 import (
 	"log"
 	"testing"
+	"time"
 )
 
 func TestGetModelName(t *testing.T) {
@@ -85,4 +86,8 @@ func TestParseModelIndex(t *testing.T) {
 
 	name, indexes = ParseModelIndex(&Teacher{})
 	log.Println(name, indexes)
+}
+
+func TestPointer(t *testing.T) {
+	log.Println(Pointer[time.Time](time.Now()).Format(time.RFC3339))
 }
