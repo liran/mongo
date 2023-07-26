@@ -70,8 +70,12 @@ func (m *Model) Inc(id, fields any) error {
 	return err
 }
 
-func (m *Model) Get(id any) (M, error) {
-	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id))
+func (m *Model) Get(id any, projection ...any) (M, error) {
+	opt := options.FindOne()
+	if len(projection) > 0 {
+		opt.SetProjection(projection[0])
+	}
+	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id), opt)
 	doc := Map()
 	err := res.Decode(&doc)
 	if err != nil {
@@ -83,14 +87,19 @@ func (m *Model) Get(id any) (M, error) {
 	return doc, nil
 }
 
-func (m *Model) First(filter, sort any) (M, error) {
+func (m *Model) First(filter, sort any, projection ...any) (M, error) {
 	if filter == nil {
 		filter = bson.D{}
 	}
+
 	opt := options.FindOne()
 	if sort != nil {
 		opt.SetSort(sort)
 	}
+	if len(projection) > 0 {
+		opt.SetProjection(projection[0])
+	}
+
 	res := m.coll.FindOne(m.txn.ctx, filter, opt)
 	var v M
 	err := res.Decode(&v)
@@ -103,8 +112,13 @@ func (m *Model) First(filter, sort any) (M, error) {
 	return v, nil
 }
 
-func (m *Model) Unmarshal(id, model any) error {
-	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id))
+func (m *Model) Unmarshal(id, model any, projection ...any) error {
+	opt := options.FindOne()
+	if len(projection) > 0 {
+		opt.SetProjection(projection[0])
+	}
+
+	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id), opt)
 	err := res.Decode(model)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -131,7 +145,7 @@ func (m *Model) Has(id any) (bool, error) {
 	return count > 0, err
 }
 
-func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64, list []M, err error) {
+func (m *Model) Pagination(filter, sort any, page, pageSize int64, projection ...any) (total int64, list []M, err error) {
 	total, err = m.Count(filter)
 	if err != nil {
 		return
@@ -153,6 +167,9 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64,
 	if sort != nil {
 		opt.SetSort(sort)
 	}
+	if len(projection) > 0 {
+		opt.SetProjection(projection[0])
+	}
 
 	if filter == nil {
 		filter = bson.D{}
@@ -165,7 +182,7 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64) (total int64,
 	return
 }
 
-func (m *Model) List(filter any, concurrency int, cb func(m M, total int64) error) error {
+func (m *Model) List(filter any, concurrency int, cb func(m M, total int64) error, projection ...any) error {
 	total, err := m.Count(filter)
 	if err != nil {
 		return err
@@ -186,6 +203,9 @@ func (m *Model) List(filter any, concurrency int, cb func(m M, total int64) erro
 	handle := func(page int64) {
 		eg.Go(func() error {
 			opt := options.Find().SetSkip((page - 1) * pageSize).SetLimit(pageSize)
+			if len(projection) > 0 {
+				opt.SetProjection(projection[0])
+			}
 			cur, err := m.coll.Find(m.txn.ctx, filter, opt)
 			if err != nil {
 				return err
