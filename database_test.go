@@ -317,3 +317,21 @@ func TestMoreList(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNext(t *testing.T) {
+	db := NewDatabase("mongodb://172.31.9.57:27017/?directConnection=true", "product")
+
+	err := db.Txn(context.Background(), func(txn *Txn) error {
+		list, err := txn.Model("product").Next(nil, nil, "wish:65422764a8c04cecf72abc4a", 1)
+		if err != nil {
+			return err
+		}
+		for i, v := range list {
+			log.Printf("[%d/%d] %s", i+1, len(list), v["_id"])
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

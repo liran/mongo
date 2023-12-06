@@ -179,6 +179,39 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64, projection ..
 	return
 }
 
+func (m *Model) Next(filter, sort M, lastID string, pageSize int64, projection ...any) (list []M, err error) {
+	if filter == nil {
+		filter = Map()
+	}
+
+	if lastID != "" {
+		filter.Set("_id", Map().Set("$gt", lastID))
+	}
+
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	opt := options.Find().SetLimit(pageSize)
+	if len(projection) > 0 {
+		opt.SetProjection(projection[0])
+	}
+	if sort != nil {
+		opt.SetSort(sort)
+	}
+
+	cur, err := m.coll.Find(m.txn.ctx, filter, opt)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cur.All(m.txn.ctx, &list); err != nil {
+		return nil, err
+	}
+
+	return list, nil
+}
+
 // `cb` return `false` will stop iterate
 func (m *Model) List(filter M, size int64, cb func(m M, total int64) (bool, error), projection ...any) error {
 	total, err := m.Count(filter)
