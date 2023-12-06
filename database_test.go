@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"testing"
 	"time"
@@ -92,10 +93,10 @@ func TestCRUD(t *testing.T) {
 
 	// list
 	err = db.Txn(ctx, func(txn *Txn) error {
-		return txn.Model("user").List(nil, 1, func(m M, total int64) error {
+		return txn.Model("user").List(nil, 1, func(m M, total int64) (bool, error) {
 			user := ToEntity[User](m)
 			log.Printf("total: %d, id: %s, name: %s", total, user.ID, user.Name)
-			return nil
+			return true, nil
 		})
 	})
 	if err != nil {
@@ -281,6 +282,36 @@ func TestUpdate(t *testing.T) {
 
 		video = ToEntity[Video](newVideo)
 		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestList(t *testing.T) {
+	host := "localhost"
+	db := NewDatabase(fmt.Sprintf("mongodb://%s:27017/?directConnection=true", host), "product-search-engine")
+	err := db.Txn(context.Background(), func(txn *Txn) error {
+		return txn.Model("product_job").List(Map().Set("task_id", "bhabhgahjfhfhdjegjb"), 1, func(m M, total int64) (bool, error) {
+			log.Println(m)
+			return true, nil
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMoreList(t *testing.T) {
+	db := NewDatabase("mongodb://172.31.9.57:27017/?directConnection=true", "product")
+
+	n := 0
+	err := db.Txn(context.Background(), func(txn *Txn) error {
+		return txn.Model("product").List(nil, 10, func(m M, total int64) (bool, error) {
+			n++
+			log.Println(n, m["_id"])
+			return true, nil
+		})
 	})
 	if err != nil {
 		t.Fatal(err)

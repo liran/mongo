@@ -2,14 +2,11 @@ package mongo
 
 import (
 	"errors"
-	"math"
 	"reflect"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.uber.org/atomic"
-	"golang.org/x/sync/errgroup"
 )
 
 type Model struct {
@@ -182,7 +179,8 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64, projection ..
 	return
 }
 
-func (m *Model) List(filter any, concurrency int, cb func(m M, total int64) error, projection ...any) error {
+// `cb` return `false` will stop iterate
+func (m *Model) List(filter M, size int64, cb func(m M, total int64) (bool, error), projection ...any) error {
 	total, err := m.Count(filter)
 	if err != nil {
 		return err
@@ -191,50 +189,50 @@ func (m *Model) List(filter any, concurrency int, cb func(m M, total int64) erro
 		return nil
 	}
 
-	if filter == nil {
-		filter = bson.D{}
+	nextFilter := Map()
+	for k, v := range filter {
+		nextFilter[k] = v
 	}
 
-	var pageSize int64 = 200
-
-	var stopLoop atomic.Bool
-	var eg errgroup.Group
-	eg.SetLimit(concurrency)
-	handle := func(page int64) {
-		eg.Go(func() error {
-			opt := options.Find().SetSkip((page - 1) * pageSize).SetLimit(pageSize)
-			if len(projection) > 0 {
-				opt.SetProjection(projection[0])
-			}
-			cur, err := m.coll.Find(m.txn.ctx, filter, opt)
-			if err != nil {
-				return err
-			}
-
-			var ps []M
-			if err := cur.All(m.txn.ctx, &ps); err != nil {
-				return err
-			}
-			for _, v := range ps {
-				if err = cb(v, total); err != nil {
-					stopLoop.Store(true)
-					return err
-				}
-			}
-			return nil
-		})
+	if size < 1 {
+		size = 10
 	}
 
-	var page int64
-	pages := int64(math.Ceil(float64(total) / float64(pageSize)))
-	for page = 1; page <= pages; page++ {
-		if stopLoop.Load() {
-			break
+	opt := options.Find().SetLimit(size)
+	if len(projection) > 0 {
+		opt.SetProjection(projection[0])
+	}
+
+	next := Map()
+	for {
+		cur, err := m.coll.Find(m.txn.ctx, nextFilter, opt)
+		if err != nil {
+			return err
 		}
-		handle(page)
+
+		var ps []M
+		if err := cur.All(m.txn.ctx, &ps); err != nil {
+			return err
+		}
+		for _, v := range ps {
+			if ok, err := cb(v, total); err != nil || !ok {
+				return err
+			}
+		}
+
+		n := len(ps)
+		if n > 0 {
+			id, ok := ps[n-1].Get("_id")
+			if ok {
+				nextFilter.Set("_id", next.Set("$gt", id))
+				continue
+			}
+		}
+
+		break
 	}
 
-	return eg.Wait()
+	return nil
 }
 
 func NewModel(txn *Txn, model any) *Model {
