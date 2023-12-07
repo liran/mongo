@@ -171,11 +171,12 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64, projection ..
 	if filter == nil {
 		filter = bson.D{}
 	}
-	cur, err := m.coll.Find(m.txn.ctx, filter, opt)
+
+	cursor, err := m.coll.Find(m.txn.ctx, filter, opt)
 	if err != nil {
 		return
 	}
-	err = cur.All(m.txn.ctx, &list)
+	err = cursor.All(m.txn.ctx, &list)
 	return
 }
 
@@ -200,12 +201,12 @@ func (m *Model) Next(filter, sort M, lastID string, pageSize int64, projection .
 		opt.SetSort(sort)
 	}
 
-	cur, err := m.coll.Find(m.txn.ctx, filter, opt)
+	cursor, err := m.coll.Find(m.txn.ctx, filter, opt)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := cur.All(m.txn.ctx, &list); err != nil {
+	if err := cursor.All(m.txn.ctx, &list); err != nil {
 		return nil, err
 	}
 
@@ -236,36 +237,47 @@ func (m *Model) List(filter M, size int64, cb func(m M, total int64) (bool, erro
 		opt.SetProjection(projection[0])
 	}
 
+	opt.SetSort(Map().Set("_id", 1))
+
 	next := Map()
 	for {
-		cur, err := m.coll.Find(m.txn.ctx, nextFilter, opt)
+		con, err := func() (bool, error) {
+			cursor, err := m.coll.Find(m.txn.ctx, nextFilter, opt)
+			if err != nil {
+				return false, err
+			}
+			defer cursor.Close(m.txn.ctx)
+
+			last := ""
+			for cursor.Next(m.txn.ctx) {
+				m := Map()
+				if err := cursor.Decode(&m); err != nil {
+					return false, err
+				}
+				if ok, err := cb(m, total); err != nil || !ok {
+					return false, err
+				}
+				id, ok := m.Get("_id")
+				if ok {
+					last, _ = id.(string)
+				}
+			}
+
+			if last == "" {
+				return false, nil
+			}
+
+			nextFilter.Set("_id", next.Set("$gt", last))
+
+			return true, nil
+		}()
 		if err != nil {
 			return err
 		}
-
-		var ps []M
-		if err := cur.All(m.txn.ctx, &ps); err != nil {
-			return err
+		if !con {
+			return nil
 		}
-		for _, v := range ps {
-			if ok, err := cb(v, total); err != nil || !ok {
-				return err
-			}
-		}
-
-		n := len(ps)
-		if n > 0 {
-			id, ok := ps[n-1].Get("_id")
-			if ok {
-				nextFilter.Set("_id", next.Set("$gt", id))
-				continue
-			}
-		}
-
-		break
 	}
-
-	return nil
 }
 
 func NewModel(txn *Txn, model any) *Model {

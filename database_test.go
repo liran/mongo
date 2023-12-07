@@ -303,15 +303,16 @@ func TestList(t *testing.T) {
 }
 
 func TestMoreList(t *testing.T) {
-	db := NewDatabase("mongodb://172.31.9.57:27017/?directConnection=true", "product")
+	db := NewDatabase("mongodb://localhost:27017/?directConnection=true", "product-search-engine")
 
 	n := 0
 	err := db.Txn(context.Background(), func(txn *Txn) error {
-		return txn.Model("product").List(nil, 10, func(m M, total int64) (bool, error) {
+		return txn.Model("offer").List(nil, 30, func(m M, total int64) (bool, error) {
 			n++
-			log.Println(n, m["_id"])
+
+			log.Printf("[%d/%d] %s", n, total, m["_id"])
 			return true, nil
-		})
+		}, Map().Set("_id", 1))
 	})
 	if err != nil {
 		t.Fatal(err)
