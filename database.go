@@ -9,21 +9,21 @@ import (
 )
 
 type Database struct {
-	client *Client
+	*Client
 	*mongo.Database
 }
 
 func (d *Database) Close() {
-	if d.client != nil {
-		d.client.Close()
-		d.client = nil
+	if d.Client != nil {
+		d.Client.Close()
+		d.Client = nil
 	}
 }
 
 // By default, MongoDB will automatically abort any multi-document transaction that runs for more than 60 seconds.
 func (d *Database) Txn(ctx context.Context, fn func(txn *Txn) error, multiDoc ...bool) error {
 	if len(multiDoc) > 0 && multiDoc[0] {
-		session, err := d.client.StartSession()
+		session, err := d.Client.StartSession()
 		if err != nil {
 			return err
 		}
@@ -65,7 +65,7 @@ func (d *Database) Indexes(ctx context.Context, models ...any) error {
 	return nil
 }
 
-func NewDatabase(url string, name string) *Database {
-	client := NewClient(url)
-	return &Database{client: client, Database: client.Database(name)}
+func NewDatabase(url string, name string, opts ...func(c *options.ClientOptions)) *Database {
+	client := NewClient(url, opts...)
+	return &Database{Client: client, Database: client.Database(name)}
 }
