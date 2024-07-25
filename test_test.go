@@ -15,7 +15,7 @@ func TestPipeline(t *testing.T) {
 	err := godotenv.Load()
 	require.NoError(t, err)
 
-	uri := os.Getenv("MONGO_URI_1")
+	uri := os.Getenv("MONGO_URI")
 	require.NotEmpty(t, uri)
 
 	ctx := context.Background()

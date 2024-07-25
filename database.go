@@ -7,6 +7,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 type Database struct {
@@ -29,15 +30,16 @@ func (d *Database) Close() {
 // By default, MongoDB will automatically abort any multi-document transaction that runs for more than 60 seconds.
 func (d *Database) Txn(ctx context.Context, fn func(txn *Txn) error, multiDoc ...bool) error {
 	if len(multiDoc) > 0 && multiDoc[0] {
-		session, err := d.Client.StartSession()
+		// read preference in a transaction must be primary
+		sesstionOptions := &options.SessionOptions{DefaultReadPreference: readpref.Primary()}
+		session, err := d.Client.StartSession(sesstionOptions)
 		if err != nil {
 			return err
 		}
 		defer session.EndSession(ctx)
 
 		_, err = session.WithTransaction(ctx, func(sc mongo.SessionContext) (any, error) {
-			err := fn(&Txn{ctx: sc, db: d})
-			return nil, err
+			return nil, fn(&Txn{ctx: sc, db: d})
 		})
 		return err
 	}
