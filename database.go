@@ -15,7 +15,7 @@ type Database struct {
 	*mongo.Database
 }
 
-func NewDatabase(url string, name string, opts ...func(c ClientOptions)) *Database {
+func NewDatabase(url string, name string, opts ...func(c *ClientOptions)) *Database {
 	client := NewClient(url, opts...)
 	return &Database{Client: client, Database: client.Database(name)}
 }

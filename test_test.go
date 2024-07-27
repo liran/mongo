@@ -20,7 +20,7 @@ func TestPipeline(t *testing.T) {
 
 	ctx := context.Background()
 
-	db := mongo.NewDatabase(uri, "test", func(c mongo.ClientOptions) {
+	db := mongo.NewDatabase(uri, "test", func(c *mongo.ClientOptions) {
 		ttt := false
 		c.Direct = &ttt
 	})

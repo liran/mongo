@@ -25,12 +25,12 @@ func (c *Client) Close() error {
 	return c.Disconnect(ctx)
 }
 
-func NewClient(connectionURI string, opts ...func(c ClientOptions)) *Client {
+func NewClient(connectionURI string, opts ...func(c *ClientOptions)) *Client {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	opt := options.Client().ApplyURI(connectionURI)
-	copt := ClientOptions(opt)
+	copt := (*ClientOptions)(opt)
 	for _, v := range opts {
 		v(copt)
 	}

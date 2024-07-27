@@ -2,4 +2,4 @@ package mongo
 
 import "go.mongodb.org/mongo-driver/mongo/options"
 
-type ClientOptions *options.ClientOptions
+type ClientOptions options.ClientOptions
