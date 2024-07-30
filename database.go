@@ -160,11 +160,8 @@ func (o *Database) Has(model, id any) (exists bool, err error) {
 	return
 }
 
-func (o *Database) List(model any, filter M, size int64, cb func(m M, total int64) (bool, error), projection ...any) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
+func (o *Database) List(ctx context.Context, model any, filter M, cb func(m M) (bool, error), projection ...any) error {
 	return o.Txn(ctx, func(txn *Txn) error {
-		return txn.Model(model).List(filter, size, cb, projection...)
+		return txn.Model(model).List(filter, cb, projection...)
 	})
 }

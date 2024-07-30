@@ -214,25 +214,15 @@ func (m *Model) Next(filter, sort M, lastID string, pageSize int64, projection .
 }
 
 // `cb` return `false` will stop iterate
-func (m *Model) List(filter M, size int64, cb func(m M, total int64) (bool, error), projection ...any) error {
-	total, err := m.Count(filter)
-	if err != nil {
-		return err
-	}
-	if total < 1 {
-		return nil
-	}
-
+func (m *Model) List(filter M, cb func(m M) (bool, error), projection ...any) error {
 	nextFilter := Map()
 	for k, v := range filter {
 		nextFilter[k] = v
 	}
 
-	if size < 1 {
-		size = 10
-	}
+	limit := 100
 
-	opt := options.Find().SetLimit(size)
+	opt := options.Find().SetLimit(int64(limit))
 	if len(projection) > 0 {
 		opt.SetProjection(projection[0])
 	}
@@ -241,7 +231,7 @@ func (m *Model) List(filter M, size int64, cb func(m M, total int64) (bool, erro
 
 	next := Map()
 	for {
-		con, err := func() (bool, error) {
+		continues, err := func() (bool, error) {
 			cursor, err := m.coll.Find(m.txn.ctx, nextFilter, opt)
 			if err != nil {
 				return false, err
@@ -249,32 +239,35 @@ func (m *Model) List(filter M, size int64, cb func(m M, total int64) (bool, erro
 			defer cursor.Close(m.txn.ctx)
 
 			last := ""
+			couter := 0
 			for cursor.Next(m.txn.ctx) {
 				m := Map()
-				if err := cursor.Decode(&m); err != nil {
+				err := cursor.Decode(&m)
+				if err != nil {
 					return false, err
 				}
-				if ok, err := cb(m, total); err != nil || !ok {
+				if ok, err := cb(m); err != nil || !ok {
 					return false, err
 				}
 				id, ok := m.Get("_id")
 				if ok {
 					last, _ = id.(string)
 				}
+
+				couter++
 			}
 
-			if last == "" {
+			if last == "" || couter < limit {
 				return false, nil
 			}
 
 			nextFilter.Set("_id", next.Set("$gt", last))
-
 			return true, nil
 		}()
 		if err != nil {
 			return err
 		}
-		if !con {
+		if !continues {
 			return nil
 		}
 	}

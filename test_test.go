@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/liran/mongo"
@@ -95,9 +96,9 @@ func TestPipeline(t *testing.T) {
 
 	// list
 	err = db.Txn(ctx, func(txn *mongo.Txn) error {
-		return txn.Model(user).List(nil, 1, func(m mongo.M, total int64) (bool, error) {
+		return txn.Model(user).List(nil, func(m mongo.M) (bool, error) {
 			user := mongo.ToEntity[User](m)
-			log.Printf("total: %d, id: %s, name: %s", total, user.ID, user.Name)
+			log.Printf("id: %s, name: %s", user.ID, user.Name)
 			return true, nil
 		})
 	})
@@ -139,4 +140,72 @@ func TestPipeline(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
+}
+
+func TestSpeedUpList(t *testing.T) {
+	err := godotenv.Load()
+	require.NoError(t, err)
+
+	uri := os.Getenv("MONGO_URI")
+	require.NotEmpty(t, uri)
+
+	ctx := context.Background()
+
+	db := mongo.NewDatabase(uri, "videoflow", func(c *mongo.ClientOptions) {
+		ttt := false
+		c.Direct = &ttt
+	})
+
+	owner := "youtube_buyersremorsewhere"
+	// source := "author"
+	// filter := mongo.Map().Set("owner", owner).Set("source", source)
+	filter := mongo.Map().Set("owner", owner)
+	// filter := mongo.Map()
+
+	start := time.Now()
+	n := 0
+	err = db.Txn(ctx, func(txn *mongo.Txn) error {
+		now := time.Now()
+		total, err := txn.Model("link").Count(filter)
+		if err != nil {
+			return err
+		}
+		log.Printf("total: %d, time: %s", total, time.Since(now))
+
+		start = time.Now()
+		return txn.Model("link").List(filter, func(m mongo.M) (bool, error) {
+			n++
+			return true, nil
+		})
+	})
+	log.Printf("count: %d,uptime: %s", n, time.Since(start))
+	require.NoError(t, err)
+}
+
+func TestDocDBCount(t *testing.T) {
+	err := godotenv.Load()
+	require.NoError(t, err)
+
+	uri := os.Getenv("MONGO_URI")
+	require.NotEmpty(t, uri)
+
+	db := mongo.NewDatabase(uri, "videoflow", func(c *mongo.ClientOptions) {
+		ttt := false
+		c.Direct = &ttt
+	})
+
+	filter := mongo.Map()
+	owners := []string{
+		"youtube_buyersremorsewhere",
+		"tiktok_7272599113802321170",
+		"tiktok_7272599113802321170",
+		"tiktok_7271564069486824737",
+	}
+	for _, v := range owners {
+		filter.Set("owner", v)
+		now := time.Now()
+		n, err := db.Count("link", filter)
+		log.Printf("count: %d, time: %s", n, time.Since(now))
+		require.NoError(t, err)
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCRUD(t *testing.T) {
@@ -93,9 +94,9 @@ func TestCRUD(t *testing.T) {
 
 	// list
 	err = db.Txn(ctx, func(txn *Txn) error {
-		return txn.Model("user").List(nil, 1, func(m M, total int64) (bool, error) {
+		return txn.Model("user").List(nil, func(m M) (bool, error) {
 			user := ToEntity[User](m)
-			log.Printf("total: %d, id: %s, name: %s", total, user.ID, user.Name)
+			log.Printf("id: %s, name: %s", user.ID, user.Name)
 			return true, nil
 		})
 	})
@@ -169,20 +170,19 @@ func TestModelIndex(t *testing.T) {
 }
 
 func TestCount(t *testing.T) {
-	db := NewDatabase("mongodb://172.31.9.163:27017/?directConnection=true", "shopify")
+	db := NewDatabase("mongodb://172.31.9.163:27017/?directConnection=true", "videoflow")
 	defer db.Close()
 
-	uptime := time.Now()
-	ctx := context.Background()
-	err := db.Txn(ctx, func(txn *Txn) error {
-		ok, err := txn.Model("host").Count(nil)
-		log.Println(ok)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
+	owner := "youtube_buyersremorsewhere"
+	source := "author"
+	filter := Map().Set("owner", owner).Set("source", source)
+
+	for i := 0; i < 10; i++ {
+		uptime := time.Now()
+		n, err := db.Count("link", filter)
+		log.Printf("count: %d, time: %s", n, time.Since(uptime))
+		require.NoError(t, err)
 	}
-	log.Printf("time taken: %s", time.Since(uptime))
 }
 
 func TestUpdate(t *testing.T) {
@@ -292,7 +292,7 @@ func TestList(t *testing.T) {
 	host := "localhost"
 	db := NewDatabase(fmt.Sprintf("mongodb://%s:27017/?directConnection=true", host), "product-search-engine")
 	err := db.Txn(context.Background(), func(txn *Txn) error {
-		return txn.Model("product_job").List(Map().Set("task_id", "bhabhgahjfhfhdjegjb"), 1, func(m M, total int64) (bool, error) {
+		return txn.Model("product_job").List(Map().Set("task_id", "bhabhgahjfhfhdjegjb"), func(m M) (bool, error) {
 			log.Println(m)
 			return true, nil
 		})
@@ -307,7 +307,12 @@ func TestMoreList(t *testing.T) {
 
 	n := 0
 	err := db.Txn(context.Background(), func(txn *Txn) error {
-		return txn.Model("offer").List(nil, 30, func(m M, total int64) (bool, error) {
+		total, err := txn.Model("offer").Count(nil)
+		if err != nil {
+			return err
+		}
+
+		return txn.Model("offer").List(nil, func(m M) (bool, error) {
 			n++
 
 			log.Printf("[%d/%d] %s", n, total, m["_id"])
