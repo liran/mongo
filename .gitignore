@@ -16,3 +16,7 @@ dist
 # vendor/
 .DS_Store
 cmd/v2_to_v3/m2t3
+
+
+.env
+__debug_*
