@@ -288,6 +288,29 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
+func TestUpdateMany(t *testing.T) {
+	db := NewDatabase("mongodb://localhost:27017/?directConnection=true", "realm")
+	defer db.Close()
+
+	type Job struct {
+		Priority string `json:"priority" bson:"priority"`
+	}
+	err := db.Txn(context.Background(), func(txn *Txn) error {
+		filter := Map().Set("priority", "low")
+		update := Map().Set("priority", "high").Set("whatever", "whatever")
+		count, err := txn.Model(&Job{}).UpdateMany(filter, update)
+		if err != nil {
+			return err
+		}
+		log.Println("updated count:", count)
+		return err
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestList(t *testing.T) {
 	host := "localhost"
 	db := NewDatabase(fmt.Sprintf("mongodb://%s:27017/?directConnection=true", host), "product-search-engine")
