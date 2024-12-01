@@ -62,6 +62,24 @@ func (m *Model) Update(update any) (newRecord M, err error) {
 	return old, nil
 }
 
+func (m *Model) UpdateMany(filter, update any) (updatedCount int64, err error) {
+	raw, err := bson.Marshal(update)
+	if err != nil {
+		return 0, err
+	}
+	updateMap := Map()
+	if err := bson.Unmarshal(raw, &updateMap); err != nil {
+		return 0, err
+	}
+
+	res, err := m.coll.UpdateMany(m.txn.ctx, filter, bson.D{{Key: "$set", Value: updateMap}})
+	if err != nil {
+		return 0, err
+	}
+
+	return res.ModifiedCount, nil
+}
+
 func (m *Model) Inc(id, fields any) error {
 	_, err := m.coll.UpdateByID(m.txn.ctx, id, bson.D{{Key: "$inc", Value: fields}})
 	return err
