@@ -67,6 +67,12 @@ func TestParseModelIndex(t *testing.T) {
 	}
 
 	type Student struct {
+		*User `json:"user" bson:"-"`
+
+		Class string `json:"class" db:"index"`
+	}
+
+	type Student2 struct {
 		*User `json:"user"`
 
 		Class string `json:"class" db:"index"`
@@ -81,7 +87,10 @@ func TestParseModelIndex(t *testing.T) {
 	name, indexes := ParseModelIndex(&Student{})
 	log.Println(name, indexes)
 
-	name, indexes = ParseModelIndex(&Student{User: &User{Name: "liran"}})
+	name, indexes = ParseModelIndex(&Student{User: &User{}})
+	log.Println(name, indexes)
+
+	name, indexes = ParseModelIndex(&Student2{User: &User{}})
 	log.Println(name, indexes)
 
 	name, indexes = ParseModelIndex(&Teacher{})
@@ -89,5 +98,5 @@ func TestParseModelIndex(t *testing.T) {
 }
 
 func TestPointer(t *testing.T) {
-	log.Println(Pointer[time.Time](time.Now()).Format(time.RFC3339))
+	log.Println(Pointer(time.Now()).Format(time.RFC3339))
 }
