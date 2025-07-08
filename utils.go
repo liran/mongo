@@ -154,6 +154,11 @@ func ParseModelIndex(model any) (modelName string, indexes map[string]bool) {
 		fieldValue := modelValue.Field(i)
 		fieldKind := fieldValue.Kind()
 
+		// skip unexported fields
+		if !fieldType.IsExported() {
+			continue
+		}
+
 		// recursive search
 		if fieldKind == reflect.Pointer ||
 			fieldKind == reflect.UnsafePointer ||

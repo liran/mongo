@@ -89,5 +89,5 @@ func TestParseModelIndex(t *testing.T) {
 }
 
 func TestPointer(t *testing.T) {
-	log.Println(Pointer[time.Time](time.Now()).Format(time.RFC3339))
+	log.Println(Pointer(time.Now()).Format(time.RFC3339))
 }
