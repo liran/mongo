@@ -159,6 +159,17 @@ func ParseModelIndex(model any) (modelName string, indexes map[string]bool) {
 			continue
 		}
 
+		indexName := fieldType.Tag.Get("bson")
+		if indexName == "-" {
+			continue
+		}
+		if indexName != "" {
+			indexName = strings.Trim(strings.ReplaceAll(indexName, "omitempty", ""), " ,")
+		}
+		if indexName == "" {
+			indexName = strings.ToLower(fieldType.Name)
+		}
+
 		// recursive search
 		if fieldKind == reflect.Pointer ||
 			fieldKind == reflect.UnsafePointer ||
@@ -181,14 +192,6 @@ func ParseModelIndex(model any) (modelName string, indexes map[string]bool) {
 		_, hasUnique := dbTags["unique"]
 		if !hasIndex && !hasUnique {
 			continue
-		}
-
-		indexName := fieldType.Tag.Get("bson")
-		if indexName != "" {
-			indexName = strings.Trim(strings.ReplaceAll(indexName, "omitempty", ""), " ,")
-		}
-		if indexName == "" {
-			indexName = strings.ToLower(fieldType.Name)
 		}
 
 		indexes[indexName] = hasUnique
