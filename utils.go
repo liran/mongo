@@ -86,6 +86,12 @@ func GetID(model any) any {
 		modelType := modelValue.Type()
 		for i := 0; i < modelType.NumField(); i++ {
 			fieldType := modelType.Field(i)
+
+			// skip unexported fields
+			if !fieldType.IsExported() {
+				continue
+			}
+
 			fieldValue := modelValue.Field(i)
 			fieldKind := fieldValue.Kind()
 
@@ -151,13 +157,14 @@ func ParseModelIndex(model any) (modelName string, indexes map[string]bool) {
 
 	for i := 0; i < modelType.NumField(); i++ {
 		fieldType := modelType.Field(i)
-		fieldValue := modelValue.Field(i)
-		fieldKind := fieldValue.Kind()
 
 		// skip unexported fields
 		if !fieldType.IsExported() {
 			continue
 		}
+
+		fieldValue := modelValue.Field(i)
+		fieldKind := fieldValue.Kind()
 
 		indexName := fieldType.Tag.Get("bson")
 		if indexName == "-" {
