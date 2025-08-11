@@ -231,24 +231,28 @@ func (m *Model) Next(filter, sort M, lastID string, pageSize int64, projection .
 	return list, nil
 }
 
+const defaultListLimit = 100
+
 // List is a convenience method for listing documents in ascending order, `cb` return `false` will stop iterate
 func (m *Model) List(filter M, cb func(m M) (bool, error), projection ...any) error {
-	return m.ListWithOrder(filter, cb, false, projection...)
+	return m.ListByCursor(filter, false, defaultListLimit, cb, projection...)
 }
 
 // ListDescending is a convenience method for listing documents in descending order
 func (m *Model) ListDescending(filter M, cb func(m M) (bool, error), projection ...any) error {
-	return m.ListWithOrder(filter, cb, true, projection...)
+	return m.ListByCursor(filter, true, defaultListLimit, cb, projection...)
 }
 
-// ListWithOrder supports ascending/descending traversal, desc=true for descending
-func (m *Model) ListWithOrder(filter M, cb func(m M) (bool, error), desc bool, projection ...any) error {
+// ListByCursor supports ascending/descending traversal, desc=true for descending
+func (m *Model) ListByCursor(filter M, desc bool, limit int, cb func(m M) (bool, error), projection ...any) error {
 	nextFilter := Map()
 	for k, v := range filter {
 		nextFilter[k] = v
 	}
 
-	limit := 100
+	if limit < 1 {
+		limit = defaultListLimit
+	}
 
 	sortOrder := 1
 	cmpOp := "$gt"
