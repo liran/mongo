@@ -1,9 +1,9 @@
 package mongo
 
 import (
-	"errors"
 	"strings"
 
+	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
