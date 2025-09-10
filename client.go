@@ -30,9 +30,8 @@ func NewClient(connectionURI string, opts ...func(c *ClientOptions)) *Client {
 	defer cancel()
 
 	opt := options.Client().ApplyURI(connectionURI)
-	copt := (*ClientOptions)(opt)
 	for _, v := range opts {
-		v(copt)
+		v(opt)
 	}
 
 	client, err := mongo.Connect(ctx, opt)
