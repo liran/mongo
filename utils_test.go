@@ -59,7 +59,7 @@ func TestSequentialID(t *testing.T) {
 	}
 }
 
-func TestParseModelIndex(t *testing.T) {
+func TestParseModelIndexes(t *testing.T) {
 	type User struct {
 		Name       string `json:"name" bson:"_id,omitempty"`
 		Age        int64  `json:"age" bson:"age,omitempty" db:"index"`
@@ -84,16 +84,16 @@ func TestParseModelIndex(t *testing.T) {
 		Class string `json:"class" db:"index"`
 	}
 
-	name, indexes := ParseModelIndex(&Student{})
+	name, indexes := ParseModelIndexes(&Student{})
 	log.Println(name, indexes)
 
-	name, indexes = ParseModelIndex(&Student{User: &User{}})
+	name, indexes = ParseModelIndexes(&Student{User: &User{}})
 	log.Println(name, indexes)
 
-	name, indexes = ParseModelIndex(&Student2{User: &User{}})
+	name, indexes = ParseModelIndexes(&Student2{User: &User{}})
 	log.Println(name, indexes)
 
-	name, indexes = ParseModelIndex(&Teacher{})
+	name, indexes = ParseModelIndexes(&Teacher{})
 	log.Println(name, indexes)
 }
 

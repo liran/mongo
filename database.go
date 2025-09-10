@@ -49,7 +49,7 @@ func (d *Database) Txn(ctx context.Context, fn func(txn *Txn) error, multiDoc ..
 
 func (d *Database) Indexes(ctx context.Context, models ...any) error {
 	for _, model := range models {
-		name, indexes := ParseModelIndex(model)
+		name, indexes := ParseModelIndexes(model)
 		if name == "" {
 			return ErrInvalidModelName
 		}

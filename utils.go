@@ -134,7 +134,7 @@ func GetID(model any) any {
 	return nil
 }
 
-func ParseModelIndex(model any) (modelName string, indexes map[string]bool) {
+func ParseModelIndexes(model any) (modelName string, indexes map[string]bool) {
 	indexes = make(map[string]bool)
 
 	modelValue := reflect.ValueOf(model)
@@ -181,7 +181,7 @@ func ParseModelIndex(model any) (modelName string, indexes map[string]bool) {
 		if fieldKind == reflect.Pointer ||
 			fieldKind == reflect.UnsafePointer ||
 			fieldKind == reflect.Struct {
-			_, innerIndexes := ParseModelIndex(fieldValue.Interface())
+			_, innerIndexes := ParseModelIndexes(fieldValue.Interface())
 			for k, v := range innerIndexes {
 				indexes[k] = v
 			}
