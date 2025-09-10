@@ -49,25 +49,52 @@ func (d *Database) Txn(ctx context.Context, fn func(txn *Txn) error, multiDoc ..
 
 func (d *Database) Indexes(ctx context.Context, models ...any) error {
 	for _, model := range models {
-		name, indexes := ParseModelIndexes(model)
+		name, indexInfo := ParseModelIndexes(model)
 		if name == "" {
 			return ErrInvalidModelName
 		}
-		if len(indexes) < 1 {
+		if indexInfo == nil || (len(indexInfo.SingleIndexes) == 0 && len(indexInfo.CompoundIndexes) == 0) {
 			continue
 		}
 
 		var indexModels []mongo.IndexModel
-		for indexName, unique := range indexes {
+
+		// Create single field indexes
+		for indexName, unique := range indexInfo.SingleIndexes {
 			im := mongo.IndexModel{Keys: bson.D{{Key: indexName, Value: 1}}}
 			if unique {
 				im.Options = options.Index().SetUnique(true)
 			}
 			indexModels = append(indexModels, im)
 		}
-		_, err := d.Collection(name).Indexes().CreateMany(ctx, indexModels)
-		if err != nil {
-			return err
+
+		// Create compound indexes
+		for groupName, compoundIndex := range indexInfo.CompoundIndexes {
+			if len(compoundIndex.Fields) == 0 {
+				continue
+			}
+
+			// Create compound index keys
+			keys := bson.D{}
+			for _, fieldName := range compoundIndex.Fields {
+				keys = append(keys, bson.E{Key: fieldName, Value: 1})
+			}
+
+			im := mongo.IndexModel{Keys: keys}
+			// Set unique if the compound index is marked as unique
+			if compoundIndex.Unique {
+				im.Options = options.Index().SetUnique(true).SetName(groupName)
+			} else {
+				im.Options = options.Index().SetName(groupName)
+			}
+			indexModels = append(indexModels, im)
+		}
+
+		if len(indexModels) > 0 {
+			_, err := d.Collection(name).Indexes().CreateMany(ctx, indexModels)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
