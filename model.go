@@ -21,6 +21,9 @@ func (m *Model) Set(model any) error {
 	}
 
 	_, err := m.coll.ReplaceOne(m.txn.ctx, GetIdFilter(id), model, options.Replace().SetUpsert(true))
+	if err != nil && isDuplicateKeyError(err) {
+		return ErrDuplicateKey
+	}
 	return err
 }
 
@@ -52,6 +55,9 @@ func (m *Model) Update(update any) (newRecord M, err error) {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, ErrRecordNotFound
 		}
+		if isDuplicateKeyError(err) {
+			return nil, ErrDuplicateKey
+		}
 		return nil, err
 	}
 
@@ -74,6 +80,9 @@ func (m *Model) UpdateMany(filter, update any) (updatedCount int64, err error) {
 
 	res, err := m.coll.UpdateMany(m.txn.ctx, filter, bson.D{{Key: "$set", Value: updateMap}})
 	if err != nil {
+		if isDuplicateKeyError(err) {
+			return 0, ErrDuplicateKey
+		}
 		return 0, err
 	}
 

@@ -171,6 +171,42 @@ func TestModelIndex(t *testing.T) {
 	}
 }
 
+func TestDupWrite(t *testing.T) {
+	db := NewDatabase("mongodb://127.0.0.1:27017/?directConnection=true", "test-123")
+	defer db.Close()
+
+	type User struct {
+		ID         string     `bson:"_id"`
+		Name       string     `db:"unique"`
+		Age        int64      `db:"index"`
+		OrderCount string     `bson:"order_count"`
+		CreatedAt  *time.Time `bson:"created_at,omitempty" db:"index"`
+		Domain     string     `bson:"domain" db:"unique,group=abc"`
+		Region     string     `bson:"region" db:"unique,group=abc"`
+	}
+
+	ctx := context.Background()
+	user1 := &User{ID: "1", Name: "Name1", Age: 1, Domain: "Domain1", Region: "Region1"}
+	user2 := &User{ID: "2", Name: "Name2", Age: 1, Domain: "Domain1", Region: "Region1"}
+
+	err := db.Txn(ctx, func(txn *Txn) error {
+		return txn.Model(user1).Set(user1)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = db.Txn(ctx, func(txn *Txn) error {
+		return txn.Model(user2).Set(user2)
+	})
+	if err == nil {
+		t.Fatal("expected duplicate key error")
+	}
+	if !errors.Is(err, ErrDuplicateKey) {
+		t.Fatal("expected duplicate key error")
+	}
+}
+
 func TestCount(t *testing.T) {
 	db := NewDatabase("mongodb://172.31.9.163:27017/?directConnection=true", "videoflow")
 	defer db.Close()
