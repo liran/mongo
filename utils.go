@@ -134,12 +134,6 @@ func GetID(model any) any {
 	return nil
 }
 
-// IndexInfo represents index information including single field and compound indexes
-type IndexInfo struct {
-	SingleIndexes   map[string]bool           // field name -> isUnique
-	CompoundIndexes map[string]*CompoundIndex // group name -> compound index info
-}
-
 // CompoundIndex represents a compound index with its fields and uniqueness
 type CompoundIndex struct {
 	Fields []string
@@ -147,11 +141,8 @@ type CompoundIndex struct {
 }
 
 // ParseModelIndexes parses model indexes and returns detailed index information
-func ParseModelIndexes(model any) (modelName string, indexInfo *IndexInfo) {
-	indexInfo = &IndexInfo{
-		SingleIndexes:   make(map[string]bool),
-		CompoundIndexes: make(map[string]*CompoundIndex),
-	}
+func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*CompoundIndex) {
+	indexInfo = make(map[string]*CompoundIndex)
 
 	modelValue := reflect.ValueOf(model)
 	k := modelValue.Kind()
@@ -198,15 +189,16 @@ func ParseModelIndexes(model any) (modelName string, indexInfo *IndexInfo) {
 			fieldKind == reflect.UnsafePointer ||
 			fieldKind == reflect.Struct {
 			_, innerIndexInfo := ParseModelIndexes(fieldValue.Interface())
-			if innerIndexInfo != nil {
-				// Merge single indexes
-				for k, v := range innerIndexInfo.SingleIndexes {
-					indexInfo.SingleIndexes[k] = v
+			// Merge indexes
+			for k, v := range innerIndexInfo {
+				if indexInfo[k] == nil {
+					indexInfo[k] = &CompoundIndex{
+						Fields: make([]string, 0),
+						Unique: false,
+					}
 				}
-				// Merge compound indexes
-				for k, v := range innerIndexInfo.CompoundIndexes {
-					indexInfo.CompoundIndexes[k] = v
-				}
+				indexInfo[k].Fields = append(indexInfo[k].Fields, v.Fields...)
+				indexInfo[k].Unique = indexInfo[k].Unique || v.Unique
 			}
 			continue
 		}
@@ -218,30 +210,29 @@ func ParseModelIndexes(model any) (modelName string, indexInfo *IndexInfo) {
 		}
 
 		dbTags := ParseTag(tag)
-		_, hasIndex := dbTags["index"]
-		_, hasUnique := dbTags["unique"]
-		groupName := dbTags["group"]
+		for k, v := range dbTags {
+			// only unique and index are supported
+			switch k {
+			case "unique", "index":
+			default:
+				continue
+			}
 
-		if !hasIndex && !hasUnique {
-			continue
-		}
+			if v == "" {
+				v = indexName
+			}
 
-		// Handle compound indexes (group)
-		if groupName != "" && (hasIndex || hasUnique) {
-			if indexInfo.CompoundIndexes[groupName] == nil {
-				indexInfo.CompoundIndexes[groupName] = &CompoundIndex{
+			if indexInfo[v] == nil {
+				indexInfo[v] = &CompoundIndex{
 					Fields: make([]string, 0),
 					Unique: false,
 				}
 			}
-			indexInfo.CompoundIndexes[groupName].Fields = append(indexInfo.CompoundIndexes[groupName].Fields, indexName)
-			// If any field in the group is unique, the compound index is unique
-			if hasUnique {
-				indexInfo.CompoundIndexes[groupName].Unique = true
+
+			indexInfo[v].Fields = append(indexInfo[v].Fields, indexName)
+			if k == "unique" {
+				indexInfo[v].Unique = true
 			}
-		} else {
-			// Handle single field indexes
-			indexInfo.SingleIndexes[indexName] = hasUnique
 		}
 	}
 
