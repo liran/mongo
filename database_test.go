@@ -160,8 +160,8 @@ func TestModelIndex(t *testing.T) {
 		Age        int64      `db:"index"`
 		OrderCount string     `bson:"order_count"`
 		CreatedAt  *time.Time `bson:"created_at,omitempty" db:"index"`
-		Domain     string     `bson:"domain" db:"unique,group=abc"`
-		Region     string     `bson:"region" db:"unique,group=abc"`
+		Domain     string     `bson:"domain" db:"unique=abc"`
+		Region     string     `bson:"region" db:"unique=abc"`
 	}
 	ctx := context.Background()
 
@@ -181,8 +181,8 @@ func TestDupWrite(t *testing.T) {
 		Age        int64      `db:"index"`
 		OrderCount string     `bson:"order_count"`
 		CreatedAt  *time.Time `bson:"created_at,omitempty" db:"index"`
-		Domain     string     `bson:"domain" db:"unique,group=abc"`
-		Region     string     `bson:"region" db:"unique,group=abc"`
+		Domain     string     `bson:"domain" db:"unique=abc"`
+		Region     string     `bson:"region" db:"unique=abc"`
 	}
 
 	ctx := context.Background()

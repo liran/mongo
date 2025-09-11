@@ -60,23 +60,21 @@ func (d *Database) Indexes(ctx context.Context, models ...any) error {
 		var indexModels []mongo.IndexModel
 
 		// Create indexes
-		for groupName, compoundIndex := range indexInfo {
-			if len(compoundIndex.Fields) == 0 {
+		for groupName, v := range indexInfo {
+			if len(v.Fields) == 0 {
 				continue
 			}
 
 			// Create compound index keys
 			keys := bson.D{}
-			for _, fieldName := range compoundIndex.Fields {
+			for _, fieldName := range v.Fields {
 				keys = append(keys, bson.E{Key: fieldName, Value: 1})
 			}
 
 			im := mongo.IndexModel{Keys: keys}
-			// Set unique if the compound index is marked as unique
-			if compoundIndex.Unique {
-				im.Options = options.Index().SetUnique(true).SetName(groupName)
-			} else {
-				im.Options = options.Index().SetName(groupName)
+			im.Options = options.Index().SetUnique(v.Unique)
+			if len(v.Fields) > 1 {
+				im.Options.SetName(groupName)
 			}
 			indexModels = append(indexModels, im)
 		}
