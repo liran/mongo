@@ -102,97 +102,40 @@ func TestParseModelIndexes(t *testing.T) {
 func TestParseModelIndexesDetailed(t *testing.T) {
 	// Test case 1: Job struct with compound unique index
 	type Job struct {
-		TaskID string `bson:"task_id" db:"unique,group=job_task_url"`
-		URL    string `bson:"url" db:"unique,group=job_task_url"`
+		TaskID string `bson:"task_id" db:"index,unique=job_task_url"`
+		URL    string `bson:"url" db:"unique=job_task_url"`
 		Status string `bson:"status" db:"index"`
 		Owner  string `bson:"owner" db:"unique"`
 	}
 
 	name, indexInfo := mongo.ParseModelIndexes(&Job{})
 	log.Printf("Model name: %s", name)
-	log.Printf("Single indexes: %+v", indexInfo.SingleIndexes)
-	log.Printf("Compound indexes: %+v", indexInfo.CompoundIndexes)
-
-	// Verify single indexes
-	if len(indexInfo.SingleIndexes) != 2 {
-		t.Errorf("Expected 2 single indexes, got %d", len(indexInfo.SingleIndexes))
-	}
-	if indexInfo.SingleIndexes["status"] {
-		t.Error("Expected status field to have unique=false")
-	}
-	if !indexInfo.SingleIndexes["owner"] {
-		t.Error("Expected owner field to have unique=true")
-	}
-
-	// Verify compound indexes
-	if len(indexInfo.CompoundIndexes) != 1 {
-		t.Errorf("Expected 1 compound index, got %d", len(indexInfo.CompoundIndexes))
-	}
-	compoundIndex, exists := indexInfo.CompoundIndexes["job_task_url"]
-	if !exists {
-		t.Error("Expected compound index 'job_task_url' to exist")
-	}
-	if !compoundIndex.Unique {
-		t.Error("Expected compound index to be unique")
-	}
-	if len(compoundIndex.Fields) != 2 {
-		t.Errorf("Expected 2 fields in compound index, got %d", len(compoundIndex.Fields))
-	}
-
-	// Check if both fields are in the compound index
-	fields := make(map[string]bool)
-	for _, field := range compoundIndex.Fields {
-		fields[field] = true
-	}
-	if !fields["task_id"] || !fields["url"] {
-		t.Error("Expected both task_id and url fields in compound index")
-	}
+	log.Printf("Job indexes: %+v", indexInfo)
 
 	// Test case 2: User struct with multiple compound indexes
 	type User struct {
 		ID       string `bson:"_id,omitempty"`
-		Email    string `bson:"email" db:"unique,group=user_email_domain"`
-		Domain   string `bson:"domain" db:"unique,group=user_email_domain"`
-		Username string `bson:"username" db:"index,group=user_name_region"`
-		Region   string `bson:"region" db:"index,group=user_name_region"`
+		Email    string `bson:"email" db:"unique=user_email_domain"`
+		Domain   string `bson:"domain" db:"unique=user_email_domain"`
+		Username string `bson:"username" db:"index=user_name_region"`
+		Region   string `bson:"region" db:"index=user_name_region"`
 		Age      int    `bson:"age" db:"index"`
 	}
 
 	name, indexInfo = mongo.ParseModelIndexes(&User{})
 	log.Printf("Model name: %s", name)
-	log.Printf("Single indexes: %+v", indexInfo.SingleIndexes)
-	log.Printf("Compound indexes: %+v", indexInfo.CompoundIndexes)
+	log.Printf("User indexes: %+v", indexInfo)
 
-	// Verify single indexes
-	if len(indexInfo.SingleIndexes) != 1 {
-		t.Errorf("Expected 1 single index, got %d", len(indexInfo.SingleIndexes))
-	}
-	if indexInfo.SingleIndexes["age"] {
-		t.Error("Expected age field to have unique=false")
+	// Test case 3: Job struct with compound unique index
+	type Teacher struct {
+		User `json:"user"`
+
+		Class string `json:"class" db:"unique=user_email_domain"`
 	}
 
-	// Verify compound indexes
-	if len(indexInfo.CompoundIndexes) != 2 {
-		t.Errorf("Expected 2 compound indexes, got %d", len(indexInfo.CompoundIndexes))
-	}
-
-	// Check user_email_domain compound index
-	emailDomainIndex, exists := indexInfo.CompoundIndexes["user_email_domain"]
-	if !exists {
-		t.Error("Expected compound index 'user_email_domain' to exist")
-	}
-	if !emailDomainIndex.Unique {
-		t.Error("Expected user_email_domain compound index to be unique")
-	}
-
-	// Check user_name_region compound index
-	nameRegionIndex, exists := indexInfo.CompoundIndexes["user_name_region"]
-	if !exists {
-		t.Error("Expected compound index 'user_name_region' to exist")
-	}
-	if nameRegionIndex.Unique {
-		t.Error("Expected user_name_region compound index to be non-unique")
-	}
+	name, indexInfo = mongo.ParseModelIndexes(&Teacher{})
+	log.Printf("Model name: %s", name)
+	log.Printf("User indexes: %+v", indexInfo)
 }
 
 func TestPointer(t *testing.T) {

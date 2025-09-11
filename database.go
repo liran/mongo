@@ -53,23 +53,14 @@ func (d *Database) Indexes(ctx context.Context, models ...any) error {
 		if name == "" {
 			return ErrInvalidModelName
 		}
-		if indexInfo == nil || (len(indexInfo.SingleIndexes) == 0 && len(indexInfo.CompoundIndexes) == 0) {
+		if len(indexInfo) == 0 {
 			continue
 		}
 
 		var indexModels []mongo.IndexModel
 
-		// Create single field indexes
-		for indexName, unique := range indexInfo.SingleIndexes {
-			im := mongo.IndexModel{Keys: bson.D{{Key: indexName, Value: 1}}}
-			if unique {
-				im.Options = options.Index().SetUnique(true)
-			}
-			indexModels = append(indexModels, im)
-		}
-
-		// Create compound indexes
-		for groupName, compoundIndex := range indexInfo.CompoundIndexes {
+		// Create indexes
+		for groupName, compoundIndex := range indexInfo {
 			if len(compoundIndex.Fields) == 0 {
 				continue
 			}
