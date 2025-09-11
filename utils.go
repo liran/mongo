@@ -211,6 +211,12 @@ func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*Compo
 
 		dbTags := ParseTag(tag)
 		for k, v := range dbTags {
+			// only unique and index are supported
+			switch k {
+			case "unique", "index":
+			default:
+				continue
+			}
 
 			if v == "" {
 				v = indexName
