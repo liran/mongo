@@ -1,3 +1,4 @@
+// Package mongo defines common error types for MongoDB operations.
 package mongo
 
 import (

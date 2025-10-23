@@ -1,3 +1,4 @@
+// Package mongo provides transaction management for MongoDB operations.
 package mongo
 
 import (

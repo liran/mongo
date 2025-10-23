@@ -1,6 +1,6 @@
 module github.com/liran/mongo
 
-go 1.20
+go 1.25.0
 
 require (
 	github.com/iancoleman/strcase v0.2.0

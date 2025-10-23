@@ -1,3 +1,4 @@
+// Package mongo provides model operations for MongoDB collections.
 package mongo
 
 import (
@@ -20,7 +21,7 @@ func (m *Model) Set(model any) error {
 		return ErrNoID
 	}
 
-	_, err := m.coll.ReplaceOne(m.txn.ctx, GetIdFilter(id), model, options.Replace().SetUpsert(true))
+	_, err := m.coll.ReplaceOne(m.txn.ctx, GetIDFilter(id), model, options.Replace().SetUpsert(true))
 	if err != nil && isDuplicateKeyError(err) {
 		return ErrDuplicateKey
 	}
@@ -28,11 +29,11 @@ func (m *Model) Set(model any) error {
 }
 
 func (m *Model) Del(id any) error {
-	_, err := m.coll.DeleteOne(m.txn.ctx, GetIdFilter(id))
+	_, err := m.coll.DeleteOne(m.txn.ctx, GetIDFilter(id))
 	return err
 }
 
-// parameter 'update' can be a structure or a Map containing the primary key
+// Update updates a record with the given data. The parameter 'update' can be a structure or a Map containing the primary key.
 func (m *Model) Update(update any) (newRecord M, err error) {
 	id := GetID(update)
 	if id == nil || id == "" {
@@ -48,7 +49,7 @@ func (m *Model) Update(update any) (newRecord M, err error) {
 		return nil, err
 	}
 
-	res := m.coll.FindOneAndUpdate(m.txn.ctx, GetIdFilter(id), bson.D{{Key: "$set", Value: updateMap}})
+	res := m.coll.FindOneAndUpdate(m.txn.ctx, GetIDFilter(id), bson.D{{Key: "$set", Value: updateMap}})
 	old := Map()
 	err = res.Decode(&old)
 	if err != nil {
@@ -99,7 +100,7 @@ func (m *Model) Get(id any, projection ...any) (M, error) {
 	if len(projection) > 0 {
 		opt.SetProjection(projection[0])
 	}
-	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id), opt)
+	res := m.coll.FindOne(m.txn.ctx, GetIDFilter(id), opt)
 	doc := Map()
 	err := res.Decode(&doc)
 	if err != nil {
@@ -142,7 +143,7 @@ func (m *Model) Unmarshal(id, model any, projection ...any) error {
 		opt.SetProjection(projection[0])
 	}
 
-	res := m.coll.FindOne(m.txn.ctx, GetIdFilter(id), opt)
+	res := m.coll.FindOne(m.txn.ctx, GetIDFilter(id), opt)
 	err := res.Decode(model)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -165,7 +166,7 @@ func (m *Model) Count(filter any) (count int64, err error) {
 }
 
 func (m *Model) Has(id any) (bool, error) {
-	count, err := m.coll.CountDocuments(m.txn.ctx, GetIdFilter(id), options.Count().SetLimit(1))
+	count, err := m.coll.CountDocuments(m.txn.ctx, GetIDFilter(id), options.Count().SetLimit(1))
 	return count > 0, err
 }
 

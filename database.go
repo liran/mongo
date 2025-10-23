@@ -1,3 +1,4 @@
+// Package mongo provides database operations and transaction management.
 package mongo
 
 import (
@@ -29,7 +30,7 @@ func (d *Database) Close() {
 	}
 }
 
-// By default, MongoDB will automatically abort any multi-document transaction that runs for more than 60 seconds.
+// Txn executes a transaction with the given function. By default, MongoDB will automatically abort any multi-document transaction that runs for more than 60 seconds.
 func (d *Database) Txn(ctx context.Context, fn func(txn *Txn) error, multiDoc ...bool) error {
 	if len(multiDoc) > 0 && multiDoc[0] {
 		// read preference in a transaction must be primary
@@ -117,29 +118,29 @@ func (d *Database) Indexes(ctx context.Context, models ...any) error {
 	return nil
 }
 
-func (o *Database) Set(record any) error {
+func (d *Database) Set(record any) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return o.Txn(ctx, func(txn *Txn) error {
+	return d.Txn(ctx, func(txn *Txn) error {
 		return txn.Model(record).Set(record)
 	})
 }
 
-func (o *Database) Delete(model any, id string) error {
+func (d *Database) Delete(model any, id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return o.Txn(ctx, func(txn *Txn) error {
+	return d.Txn(ctx, func(txn *Txn) error {
 		return txn.Model(model).Del(id)
 	})
 }
 
-func (o *Database) Update(record any) (newRecord M, err error) {
+func (d *Database) Update(record any) (newRecord M, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	o.Txn(ctx, func(txn *Txn) error {
+	d.Txn(ctx, func(txn *Txn) error {
 		newRecord, err = txn.Model(record).Update(record)
 		return err
 	})
@@ -147,11 +148,11 @@ func (o *Database) Update(record any) (newRecord M, err error) {
 	return
 }
 
-func (o *Database) Pagination(model, filter, sort any, page, pageSize int64, projection ...any) (total int64, list []M, err error) {
+func (d *Database) Pagination(model, filter, sort any, page, pageSize int64, projection ...any) (total int64, list []M, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	o.Txn(ctx, func(txn *Txn) error {
+	d.Txn(ctx, func(txn *Txn) error {
 		total, list, err = txn.Model(model).Pagination(filter, sort, page, pageSize, projection...)
 		return err
 	})
@@ -159,20 +160,20 @@ func (o *Database) Pagination(model, filter, sort any, page, pageSize int64, pro
 	return
 }
 
-func (o *Database) Unmarshal(id, model any, projection ...any) error {
+func (d *Database) Unmarshal(id, model any, projection ...any) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return o.Txn(ctx, func(txn *Txn) error {
+	return d.Txn(ctx, func(txn *Txn) error {
 		return txn.Model(model).Unmarshal(id, model, projection...)
 	})
 }
 
-func (o *Database) First(model, filter, sort any, projection ...any) (record M, err error) {
+func (d *Database) First(model, filter, sort any, projection ...any) (record M, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	o.Txn(ctx, func(txn *Txn) error {
+	d.Txn(ctx, func(txn *Txn) error {
 		record, err = txn.Model(model).First(filter, sort, projection...)
 		return err
 	})
@@ -180,11 +181,11 @@ func (o *Database) First(model, filter, sort any, projection ...any) (record M, 
 	return
 }
 
-func (o *Database) Count(model, filter any) (count int64, err error) {
+func (d *Database) Count(model, filter any) (count int64, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	o.Txn(ctx, func(txn *Txn) error {
+	d.Txn(ctx, func(txn *Txn) error {
 		count, err = txn.Model(model).Count(filter)
 		return err
 	})
@@ -192,11 +193,11 @@ func (o *Database) Count(model, filter any) (count int64, err error) {
 	return
 }
 
-func (o *Database) Has(model, id any) (exists bool, err error) {
+func (d *Database) Has(model, id any) (exists bool, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	o.Txn(ctx, func(txn *Txn) error {
+	d.Txn(ctx, func(txn *Txn) error {
 		exists, err = txn.Model(model).Has(id)
 		return err
 	})
@@ -204,8 +205,8 @@ func (o *Database) Has(model, id any) (exists bool, err error) {
 	return
 }
 
-func (o *Database) List(ctx context.Context, model any, filter M, cb func(m M) (bool, error), projection ...any) error {
-	return o.Txn(ctx, func(txn *Txn) error {
+func (d *Database) List(ctx context.Context, model any, filter M, cb func(m M) (bool, error), projection ...any) error {
+	return d.Txn(ctx, func(txn *Txn) error {
 		return txn.Model(model).List(filter, cb, projection...)
 	})
 }

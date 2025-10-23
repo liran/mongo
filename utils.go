@@ -1,3 +1,4 @@
+// Package mongo provides utility functions for MongoDB operations.
 package mongo
 
 import (
@@ -61,7 +62,7 @@ func ToSnake(text string) string {
 	return strcase.ToSnakeWithIgnore(text, ".")
 }
 
-func GetIdFilter(id any) any {
+func GetIDFilter(id any) any {
 	return bson.D{{Key: "_id", Value: id}}
 }
 
@@ -245,7 +246,7 @@ type TagInfo struct {
 	PrimaryKey bool   // primary key tag is used to indicate that the field is a primary key
 }
 
-// index=name,unique=name,pk
+// ParseTag parses a database tag string and returns TagInfo. Format: index=name,unique=name,pk
 func ParseTag(tag string) TagInfo {
 	info := TagInfo{}
 

@@ -1,5 +1,5 @@
+// Package mongo provides a MongoDB client wrapper with enhanced functionality.
 // https://www.mongodb.com/docs/drivers/go/current/quick-start/
-
 package mongo
 
 import (
