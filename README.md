@@ -440,12 +440,12 @@ namePtr := mongo.Pointer("John Doe")
 ```go
 // Create and manipulate maps
 filter := mongo.Map().
-    Set("age", mongo.Map().Set("$gte", 18)).
-    Set("status", "active")
+	Set("age", mongo.Map().Set("$gte", 18)).
+	Set("status", "active")
 
 // Get value from map
 if age, ok := filter.Get("age"); ok {
-    // use age
+	// use age
 }
 
 // Delete key from map
