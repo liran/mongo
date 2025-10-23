@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-const Tag = "db"
+const TagName = "db"
 
 type M bson.M
 
@@ -95,6 +95,21 @@ func GetID(model any) any {
 			fieldValue := modelValue.Field(i)
 			fieldKind := fieldValue.Kind()
 
+			// `db:"pk"`
+			tag := fieldType.Tag.Get(TagName)
+			if tag != "" {
+				dbTags := ParseTag(tag)
+				if dbTags.PrimaryKey {
+					return modelValue.Field(i).Interface()
+				}
+			}
+
+			// `bson:"_id"`
+			tag = fieldType.Tag.Get("bson")
+			if tag != "" && strings.HasPrefix(tag, "_id") {
+				return modelValue.Field(i).Interface()
+			}
+
 			// recursive search
 			if fieldKind == reflect.Pointer ||
 				fieldKind == reflect.UnsafePointer ||
@@ -104,22 +119,6 @@ func GetID(model any) any {
 					return id
 				}
 				continue
-			}
-
-			// `db:"pk"`
-			tag := fieldType.Tag.Get(Tag)
-			if tag != "" {
-				dbTags := ParseTag(tag)
-				_, hasPrimaryKey := dbTags["pk"]
-				if hasPrimaryKey {
-					return modelValue.Field(i).Interface()
-				}
-			}
-
-			// `bson:"_id"`
-			tag = fieldType.Tag.Get("bson")
-			if tag != "" && strings.HasPrefix(tag, "_id") {
-				return modelValue.Field(i).Interface()
 			}
 		}
 	}
@@ -181,85 +180,107 @@ func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*Compo
 			indexName = strings.Trim(strings.ReplaceAll(indexName, "omitempty", ""), " ,")
 		}
 		if indexName == "" {
-			indexName = strings.ToLower(fieldType.Name)
-		}
-
-		// recursive search
-		if fieldKind == reflect.Pointer ||
-			fieldKind == reflect.UnsafePointer ||
-			fieldKind == reflect.Struct {
-			_, innerIndexInfo := ParseModelIndexes(fieldValue.Interface())
-			// Merge indexes
-			for k, v := range innerIndexInfo {
-				if indexInfo[k] == nil {
-					indexInfo[k] = &CompoundIndex{
-						Fields: make([]string, 0),
-						Unique: false,
-					}
-				}
-				indexInfo[k].Fields = append(indexInfo[k].Fields, v.Fields...)
-				indexInfo[k].Unique = indexInfo[k].Unique || v.Unique
-			}
-			continue
+			indexName = ToSnake(fieldType.Name)
 		}
 
 		// Get the field tag value
-		tag := fieldType.Tag.Get(Tag)
+		tag := fieldType.Tag.Get(TagName)
+
+		// Parse inner indexes for nested structures
+		parseInnerIndex := func() {
+			if fieldKind == reflect.Pointer ||
+				fieldKind == reflect.UnsafePointer ||
+				fieldKind == reflect.Struct {
+				_, innerIndexInfo := ParseModelIndexes(fieldValue.Interface())
+				// Merge indexes
+				for k, v := range innerIndexInfo {
+					if indexInfo[k] == nil {
+						indexInfo[k] = &CompoundIndex{
+							Fields: make([]string, 0),
+							Unique: false,
+						}
+					}
+					indexInfo[k].Fields = append(indexInfo[k].Fields, v.Fields...)
+					indexInfo[k].Unique = indexInfo[k].Unique || v.Unique
+				}
+			}
+		}
+
 		if tag == "" {
+			parseInnerIndex()
 			continue
 		}
 
 		dbTags := ParseTag(tag)
-		for k, v := range dbTags {
-			// only unique and index are supported
-			switch k {
-			case "unique", "index":
-			default:
-				continue
+		if dbTags.Unique {
+			if dbTags.UniqueName == "" {
+				dbTags.UniqueName = indexName
 			}
-
-			if v == "" {
-				v = indexName
+			if indexInfo[dbTags.UniqueName] == nil {
+				indexInfo[dbTags.UniqueName] = &CompoundIndex{
+					Fields: make([]string, 0),
+					Unique: true,
+				}
 			}
-
-			if indexInfo[v] == nil {
-				indexInfo[v] = &CompoundIndex{
+			indexInfo[dbTags.UniqueName].Fields = append(indexInfo[dbTags.UniqueName].Fields, indexName)
+		}
+		if dbTags.Index {
+			if dbTags.IndexName == "" {
+				dbTags.IndexName = indexName
+			}
+			if indexInfo[dbTags.IndexName] == nil {
+				indexInfo[dbTags.IndexName] = &CompoundIndex{
 					Fields: make([]string, 0),
 					Unique: false,
 				}
 			}
-
-			indexInfo[v].Fields = append(indexInfo[v].Fields, indexName)
-			if k == "unique" {
-				indexInfo[v].Unique = true
-			}
+			indexInfo[dbTags.IndexName].Fields = append(indexInfo[dbTags.IndexName].Fields, indexName)
 		}
 	}
 
 	return
 }
 
-func ParseTag(tag string) map[string]string {
-	m := make(map[string]string)
+type TagInfo struct {
+	Unique     bool   // unique tag is used to indicate that the field is a unique index
+	UniqueName string // unique name tag is used to indicate the name of the unique index
+	Index      bool   // index tag is used to indicate that the field is an index
+	IndexName  string // index name tag is used to indicate the name of the index
+	PrimaryKey bool   // primary key tag is used to indicate that the field is a primary key
+}
+
+// index=name,unique=name,pk
+func ParseTag(tag string) TagInfo {
+	info := TagInfo{}
 
 	multTypes := strings.Split(strings.Trim(tag, ", ;"), ",")
 	for _, v := range multTypes {
 		arr := strings.Split(v, "=")
 		if len(arr) > 0 {
-			k := strings.TrimSpace(arr[0])
+			k := strings.ToLower(strings.TrimSpace(arr[0]))
 			if k == "" {
 				continue
 			}
 
 			val := ""
 			if len(arr) > 1 {
-				val = arr[1]
+				val = strings.TrimSpace(arr[1])
 			}
-			m[strings.ToLower(k)] = val
+
+			switch k {
+			case "unique":
+				info.Unique = true
+				info.UniqueName = val
+			case "index":
+				info.Index = true
+				info.IndexName = val
+			case "pk":
+				info.PrimaryKey = true
+			}
 		}
 	}
 
-	return m
+	return info
 }
 
 func NewModelType(model any) any {
