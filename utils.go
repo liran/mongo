@@ -186,8 +186,8 @@ func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*Compo
 		// Get the field tag value
 		tag := fieldType.Tag.Get(TagName)
 
-		// Parse inner indexes for nested structures
-		parseInnerIndex := func() {
+		if tag == "" {
+			// Parse inner indexes for nested structures
 			if fieldKind == reflect.Pointer ||
 				fieldKind == reflect.UnsafePointer ||
 				fieldKind == reflect.Struct {
@@ -204,10 +204,6 @@ func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*Compo
 					indexInfo[k].Unique = indexInfo[k].Unique || v.Unique
 				}
 			}
-		}
-
-		if tag == "" {
-			parseInnerIndex()
 			continue
 		}
 
