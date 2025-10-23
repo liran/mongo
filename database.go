@@ -2,6 +2,8 @@ package mongo
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -57,9 +59,31 @@ func (d *Database) Indexes(ctx context.Context, models ...any) error {
 			continue
 		}
 
-		var indexModels []mongo.IndexModel
+		collection := d.Collection(name)
+		indexView := collection.Indexes()
 
-		// Create indexes
+		// Get existing indexes
+		existingIndexes, err := indexView.List(ctx)
+		if err != nil {
+			return err
+		}
+
+		// Create a map of existing index keys for quick lookup
+		existingIndexKeys := make(map[string]struct{})
+		for existingIndexes.Next(ctx) {
+			var indexDoc bson.M
+			if err := existingIndexes.Decode(&indexDoc); err != nil {
+				return err
+			}
+			if keys, ok := indexDoc["key"].(bson.M); ok {
+				// Convert keys to a string representation for comparison
+				keyStr := keysMapToString(keys)
+				existingIndexKeys[keyStr] = struct{}{}
+			}
+		}
+		existingIndexes.Close(ctx)
+
+		// Create indexes that don't exist
 		for groupName, v := range indexInfo {
 			if len(v.Fields) == 0 {
 				continue
@@ -71,16 +95,20 @@ func (d *Database) Indexes(ctx context.Context, models ...any) error {
 				keys = append(keys, bson.E{Key: fieldName, Value: 1})
 			}
 
+			// Check if this index already exists
+			keyStr := keysToString(keys)
+			if _, ok := existingIndexKeys[keyStr]; ok {
+				continue // Skip if index already exists
+			}
+
 			im := mongo.IndexModel{Keys: keys}
 			im.Options = options.Index().SetUnique(v.Unique)
 			if len(v.Fields) > 1 {
 				im.Options.SetName(groupName)
 			}
-			indexModels = append(indexModels, im)
-		}
 
-		if len(indexModels) > 0 {
-			_, err := d.Collection(name).Indexes().CreateMany(ctx, indexModels)
+			// Create the index
+			_, err := indexView.CreateOne(ctx, im)
 			if err != nil {
 				return err
 			}
@@ -180,4 +208,22 @@ func (o *Database) List(ctx context.Context, model any, filter M, cb func(m M) (
 	return o.Txn(ctx, func(txn *Txn) error {
 		return txn.Model(model).List(filter, cb, projection...)
 	})
+}
+
+// keysToString converts bson.D to string for index key comparison
+func keysToString(keys bson.D) string {
+	var parts []string
+	for _, key := range keys {
+		parts = append(parts, key.Key+":"+fmt.Sprintf("%v", key.Value))
+	}
+	return strings.Join(parts, ",")
+}
+
+// keysMapToString converts bson.M to string for index key comparison
+func keysMapToString(keys bson.M) string {
+	var parts []string
+	for key, value := range keys {
+		parts = append(parts, key+":"+fmt.Sprintf("%v", value))
+	}
+	return strings.Join(parts, ",")
 }

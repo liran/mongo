@@ -151,7 +151,7 @@ func TestCRUD(t *testing.T) {
 }
 
 func TestModelIndex(t *testing.T) {
-	db := NewDatabase("mongodb://127.0.0.1:27017/?directConnection=true", "test-123")
+	db := NewDatabase("mongodb://127.0.0.1:27017/?directConnection=true", "test-abc")
 	defer db.Close()
 
 	type User struct {
@@ -162,10 +162,11 @@ func TestModelIndex(t *testing.T) {
 		CreatedAt  *time.Time `bson:"created_at,omitempty" db:"index=created_at"`
 		Domain     string     `bson:"domain" db:"index,unique=abc"`
 		Region     string     `bson:"region" db:"unique=abc"`
+		New        string     `db:"index"`
 	}
 	ctx := context.Background()
 
-	err := db.Indexes(ctx, &User{})
+	err := db.Indexes(ctx, &User{CreatedAt: Pointer(time.Now())})
 	if err != nil {
 		t.Fatal(err)
 	}
