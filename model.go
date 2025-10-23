@@ -10,11 +10,15 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// Model represents a MongoDB collection with transaction context.
+// It provides low-level operations for database interactions.
 type Model struct {
 	txn  *Txn
 	coll *mongo.Collection
 }
 
+// Set creates or updates a document in the collection (upsert operation).
+// The model must have a valid ID field.
 func (m *Model) Set(model any) error {
 	id := GetID(model)
 	if id == nil || id == "" {
@@ -28,6 +32,7 @@ func (m *Model) Set(model any) error {
 	return err
 }
 
+// Del removes a document from the collection by its ID.
 func (m *Model) Del(id any) error {
 	_, err := m.coll.DeleteOne(m.txn.ctx, GetIDFilter(id))
 	return err
@@ -69,6 +74,8 @@ func (m *Model) Update(update any) (newRecord M, err error) {
 	return old, nil
 }
 
+// UpdateMany updates multiple documents matching the filter.
+// Returns the number of documents that were modified.
 func (m *Model) UpdateMany(filter, update any) (updatedCount int64, err error) {
 	raw, err := bson.Marshal(update)
 	if err != nil {
@@ -90,11 +97,15 @@ func (m *Model) UpdateMany(filter, update any) (updatedCount int64, err error) {
 	return res.ModifiedCount, nil
 }
 
+// Inc atomically increments numeric fields in a document.
+// The fields parameter should be a map of field names to increment values.
 func (m *Model) Inc(id, fields any) error {
 	_, err := m.coll.UpdateByID(m.txn.ctx, id, bson.D{{Key: "$inc", Value: fields}})
 	return err
 }
 
+// Get retrieves a document by ID with optional field projection.
+// Returns ErrRecordNotFound if the document doesn't exist.
 func (m *Model) Get(id any, projection ...any) (M, error) {
 	opt := options.FindOne()
 	if len(projection) > 0 {
@@ -112,6 +123,8 @@ func (m *Model) Get(id any, projection ...any) (M, error) {
 	return doc, nil
 }
 
+// First retrieves the first document matching the filter.
+// Supports sorting and field projection.
 func (m *Model) First(filter, sort any, projection ...any) (M, error) {
 	if filter == nil {
 		filter = bson.D{}
@@ -137,6 +150,8 @@ func (m *Model) First(filter, sort any, projection ...any) (M, error) {
 	return v, nil
 }
 
+// Unmarshal retrieves a document by ID and unmarshals it into the provided model.
+// Returns ErrRecordNotFound if the document doesn't exist.
 func (m *Model) Unmarshal(id, model any, projection ...any) error {
 	opt := options.FindOne()
 	if len(projection) > 0 {
@@ -153,6 +168,8 @@ func (m *Model) Unmarshal(id, model any, projection ...any) error {
 	return err
 }
 
+// Count returns the number of documents matching the filter.
+// If filter is nil or empty, returns the estimated document count.
 func (m *Model) Count(filter any) (count int64, err error) {
 	val := reflect.ValueOf(filter)
 	if val.Kind() == reflect.Invalid ||
@@ -165,11 +182,15 @@ func (m *Model) Count(filter any) (count int64, err error) {
 	return m.coll.CountDocuments(m.txn.ctx, filter)
 }
 
+// Has checks if a document with the given ID exists.
+// Returns true if the document exists, false otherwise.
 func (m *Model) Has(id any) (bool, error) {
 	count, err := m.coll.CountDocuments(m.txn.ctx, GetIDFilter(id), options.Count().SetLimit(1))
 	return count > 0, err
 }
 
+// Pagination retrieves paginated results with total count.
+// Supports filtering, sorting, and field projection.
 func (m *Model) Pagination(filter, sort any, page, pageSize int64, projection ...any) (total int64, list []M, err error) {
 	total, err = m.Count(filter)
 	if err != nil {
@@ -208,6 +229,8 @@ func (m *Model) Pagination(filter, sort any, page, pageSize int64, projection ..
 	return
 }
 
+// Next retrieves the next page of results using cursor-based pagination.
+// This is more efficient for large datasets than offset-based pagination.
 func (m *Model) Next(filter, sort M, lastID string, pageSize int64, projection ...any) (list []M, err error) {
 	if filter == nil {
 		filter = Map()
@@ -243,17 +266,20 @@ func (m *Model) Next(filter, sort M, lastID string, pageSize int64, projection .
 
 const defaultListLimit = 100
 
-// List is a convenience method for listing documents in ascending order, `cb` return `false` will stop iterate
+// List is a convenience method for listing documents in ascending order.
+// The callback can return false to stop iteration early.
 func (m *Model) List(filter M, cb func(m M) (bool, error), projection ...any) error {
 	return m.ListByCursor(filter, false, defaultListLimit, cb, projection...)
 }
 
-// ListDescending is a convenience method for listing documents in descending order
+// ListDescending is a convenience method for listing documents in descending order.
+// The callback can return false to stop iteration early.
 func (m *Model) ListDescending(filter M, cb func(m M) (bool, error), projection ...any) error {
 	return m.ListByCursor(filter, true, defaultListLimit, cb, projection...)
 }
 
-// ListByCursor supports ascending/descending traversal, desc=true for descending
+// ListByCursor supports efficient traversal of large datasets with cursor-based iteration.
+// Set desc=true for descending order traversal.
 func (m *Model) ListByCursor(filter M, desc bool, limit int, cb func(m M) (bool, error), projection ...any) error {
 	nextFilter := Map()
 	for k, v := range filter {
@@ -321,6 +347,8 @@ func (m *Model) ListByCursor(filter M, desc bool, limit int, cb func(m M) (bool,
 	}
 }
 
+// NewModel creates a new Model instance for the given transaction and model type.
+// The model name is automatically derived from the struct type.
 func NewModel(txn *Txn, model any) *Model {
 	modelName := GetModelName(model)
 	if modelName == "" {

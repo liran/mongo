@@ -8,14 +8,24 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+// Common error types for MongoDB operations.
 var (
+	// ErrInvalidModelName is returned when a model name cannot be determined.
 	ErrInvalidModelName = errors.New("invalid model name")
-	ErrNoID             = errors.New(`no id. not found primary key from model, defined by tag db:"pk" or bson:"_id"`)
-	ErrRecordNotFound   = errors.New("record not found")
-	ErrDuplicateKey     = errors.New("duplicate key error")
+
+	// ErrNoID is returned when a model does not have a valid primary key.
+	// The primary key must be marked with bson:"_id" or db:"pk" tag.
+	ErrNoID = errors.New(`no id. not found primary key from model, defined by tag db:"pk" or bson:"_id"`)
+
+	// ErrRecordNotFound is returned when a requested record does not exist.
+	ErrRecordNotFound = errors.New("record not found")
+
+	// ErrDuplicateKey is returned when a unique constraint violation occurs.
+	ErrDuplicateKey = errors.New("duplicate key error")
 )
 
-// isDuplicateKeyError checks if the error is a MongoDB duplicate key error
+// isDuplicateKeyError checks if the error is a MongoDB duplicate key error.
+// It handles both WriteException and BulkWriteException error types.
 func isDuplicateKeyError(err error) bool {
 	if err == nil {
 		return false

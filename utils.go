@@ -12,29 +12,40 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+// TagName is the struct tag name used for database field configuration.
+// It supports options like "index", "unique", and "pk".
 const TagName = "db"
 
+// M is an alias for bson.M, providing a convenient type for MongoDB documents.
+// It includes helper methods for common document operations.
 type M bson.M
 
+// Set sets a field value in the document and returns the document for chaining.
 func (m M) Set(k string, v any) M {
 	m[k] = v
 	return m
 }
 
+// Del removes a field from the document and returns the document for chaining.
 func (m M) Del(k string) M {
 	delete(m, k)
 	return m
 }
 
+// Get retrieves a field value from the document.
+// Returns the value and a boolean indicating if the field exists.
 func (m M) Get(k string) (any, bool) {
 	val, ok := m[k]
 	return val, ok
 }
 
+// Map creates a new empty MongoDB document.
 func Map() M {
 	return make(M)
 }
 
+// GetModelName extracts the model name from a Go type.
+// It handles pointers, primitives, and structs, converting names to snake_case.
 func GetModelName(model any) string {
 	v := reflect.ValueOf(model)
 	k := v.Kind()
@@ -58,18 +69,34 @@ func GetModelName(model any) string {
 	return ToSnake(name)
 }
 
+// ToSnake converts a string to snake_case format.
+// Uses the strcase library with dot preservation.
 func ToSnake(text string) string {
 	return strcase.ToSnakeWithIgnore(text, ".")
 }
 
+// GetIDFilter creates a MongoDB filter for finding documents by ID.
+// Returns a bson.D document with the _id field.
 func GetIDFilter(id any) any {
 	return bson.D{{Key: "_id", Value: id}}
 }
 
+// Pointer creates a pointer to the given value.
+// Useful for creating optional fields in structs.
 func Pointer[T any](v T) *T {
 	return &v
 }
 
+// GetID extracts the primary key value from a model.
+// It searches for fields tagged with bson:"_id" or db:"pk".
+// Supports nested structs and maps.
+//
+// Example:
+//
+//	type User struct {
+//	    ID string `bson:"_id"`
+//	}
+//	id := GetID(&User{ID: "123"}) // returns "123"
 func GetID(model any) any {
 	modelValue := reflect.ValueOf(model)
 	k := modelValue.Kind()
@@ -134,13 +161,16 @@ func GetID(model any) any {
 	return nil
 }
 
-// CompoundIndex represents a compound index with its fields and uniqueness
+// CompoundIndex represents a compound index configuration.
+// It defines the fields that make up the index and whether it should be unique.
 type CompoundIndex struct {
 	Fields []string
 	Unique bool
 }
 
-// ParseModelIndexes parses model indexes and returns detailed index information
+// ParseModelIndexes parses struct tags to extract index configuration.
+// Returns the model name and a map of index configurations.
+// Supports both single and compound indexes with custom naming.
 func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*CompoundIndex) {
 	indexInfo = make(map[string]*CompoundIndex)
 
@@ -238,15 +268,32 @@ func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*Compo
 	return
 }
 
+// TagInfo represents parsed database tag information.
 type TagInfo struct {
-	Unique     bool   // unique tag is used to indicate that the field is a unique index
-	UniqueName string // unique name tag is used to indicate the name of the unique index
-	Index      bool   // index tag is used to indicate that the field is an index
-	IndexName  string // index name tag is used to indicate the name of the index
-	PrimaryKey bool   // primary key tag is used to indicate that the field is a primary key
+	// Unique indicates if the field should have a unique index.
+	Unique bool
+
+	// UniqueName specifies the name for the unique index (for compound indexes).
+	UniqueName string
+
+	// Index indicates if the field should have a regular index.
+	Index bool
+
+	// IndexName specifies the name for the index (for compound indexes).
+	IndexName string
+
+	// PrimaryKey indicates if the field is the primary key.
+	PrimaryKey bool
 }
 
-// ParseTag parses a database tag string and returns TagInfo. Format: index=name,unique=name,pk
+// ParseTag parses a database tag string and returns TagInfo.
+// Format: index=name,unique=name,pk
+//
+// Example:
+//
+//	info := ParseTag("index=user_name,unique=user_email")
+//	// info.Index = true, info.IndexName = "user_name"
+//	// info.Unique = true, info.UniqueName = "user_email"
 func ParseTag(tag string) TagInfo {
 	info := TagInfo{}
 
@@ -280,6 +327,8 @@ func ParseTag(tag string) TagInfo {
 	return info
 }
 
+// NewModelType creates a new instance of the given model type.
+// Returns a pointer to a new instance of the same type.
 func NewModelType(model any) any {
 	modelVal := reflect.ValueOf(model)
 	k := modelVal.Kind()
@@ -297,6 +346,13 @@ func NewModelType(model any) any {
 	return reflect.New(modelVal.Type()).Interface()
 }
 
+// ToEntity converts a MongoDB document to a typed struct.
+// Uses BSON marshaling/unmarshaling for type conversion.
+//
+// Example:
+//
+//	doc := mongo.Map().Set("name", "John").Set("age", 30)
+//	user := mongo.ToEntity[User](doc)
 func ToEntity[T any](m M) *T {
 	o := new(T)
 	raw, err := bson.Marshal(m)
@@ -309,6 +365,12 @@ func ToEntity[T any](m M) *T {
 	return o
 }
 
+// ToEntities converts a slice of MongoDB documents to a slice of typed structs.
+//
+// Example:
+//
+//	docs := []mongo.M{...}
+//	users := mongo.ToEntities[User](docs)
 func ToEntities[T any](items []M) []*T {
 	var os []*T
 	for _, v := range items {
@@ -319,11 +381,22 @@ func ToEntities[T any](items []M) []*T {
 
 var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-// RandInRange returns a random positive integer from an inclusive minimum to an exclusive maximum
+// RandInRange returns a random integer in the range [minInclusive, maxExclusive).
+// Uses a thread-safe random number generator.
+//
+// Example:
+//
+//	num := mongo.RandInRange(1, 100) // returns random number 1-99
 func RandInRange(minInclusive, maxExclusive int) int {
 	return random.Intn(maxExclusive-minInclusive) + minInclusive
 }
 
+// SequentialID generates a unique sequential identifier.
+// Combines current timestamp with random number for uniqueness.
+//
+// Example:
+//
+//	id := mongo.SequentialID() // returns something like "123456789012345"
 func SequentialID() string {
 	text := fmt.Sprintf("%d%d", time.Now().UTC().UnixMicro(), RandInRange(100, 1000))
 	var sb strings.Builder
