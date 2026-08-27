@@ -40,12 +40,15 @@ func TestGetID(t *testing.T) {
 		*User `json:"user"`
 	}
 
-	pk := mongo.GetID(&User{Name: "liran", Age: 132})
+	user := &User{Name: "liran", Age: 132}
+	pk := mongo.GetID(user)
 	if pk != "liran" {
 		t.Fatal(pk)
 	}
 
-	pk = mongo.GetID(&Parent{User: &User{Name: "liran", Age: 132}, ID: "123"})
+	parentUser := &User{Name: "liran", Age: 132}
+	parent := &Parent{User: parentUser, ID: "123"}
+	pk = mongo.GetID(parent)
 	if pk != "123" {
 		t.Fatal(pk)
 	}
@@ -55,6 +58,48 @@ func TestGetID(t *testing.T) {
 	if pk != "1" {
 		t.Fatal(pk)
 	}
+}
+
+func TestMapHelpers(t *testing.T) {
+	document := mongo.Map().Set("name", "Liran").Set("active", true)
+	name, exists := document.Get("name")
+	require.True(t, exists)
+	require.Equal(t, "Liran", name)
+
+	document.Del("active")
+	_, exists = document.Get("active")
+	require.False(t, exists)
+}
+
+func TestEntityConversions(t *testing.T) {
+	type User struct {
+		ID   string `bson:"_id"`
+		Name string `bson:"name"`
+	}
+
+	document := mongo.M{"_id": "user-1", "name": "Liran"}
+	user := mongo.ToEntity[User](document)
+	require.Equal(t, "user-1", user.ID)
+	require.Equal(t, "Liran", user.Name)
+
+	users := mongo.ToEntities[User]([]mongo.M{document})
+	require.Len(t, users, 1)
+	require.Equal(t, user, users[0])
+}
+
+func TestNewModelType(t *testing.T) {
+	type User struct {
+		ID string
+	}
+
+	user := &User{ID: "user-1"}
+	created := mongo.NewModelType(user)
+	require.IsType(t, new(User), created)
+	require.Empty(t, created.(*User).ID)
+
+	var nilUser *User
+	require.Nil(t, mongo.NewModelType(nilUser))
+	require.Nil(t, mongo.NewModelType(1))
 }
 
 func TestSequentialID(t *testing.T) {
@@ -88,16 +133,20 @@ func TestParseModelIndexes(t *testing.T) {
 		Class string `json:"class" db:"index"`
 	}
 
-	name, indexes := mongo.ParseModelIndexes(&Student{})
+	student := new(Student)
+	name, indexes := mongo.ParseModelIndexes(student)
 	log.Println(name, indexes)
 
-	name, indexes = mongo.ParseModelIndexes(&Student{User: &User{}})
+	student = &Student{User: new(User)}
+	name, indexes = mongo.ParseModelIndexes(student)
 	log.Println(name, indexes)
 
-	name, indexes = mongo.ParseModelIndexes(&Student2{User: &User{}})
+	student2 := &Student2{User: new(User)}
+	name, indexes = mongo.ParseModelIndexes(student2)
 	log.Println(name, indexes)
 
-	name, indexes = mongo.ParseModelIndexes(&Teacher{})
+	teacher := new(Teacher)
+	name, indexes = mongo.ParseModelIndexes(teacher)
 	log.Println(name, indexes)
 }
 
@@ -110,7 +159,8 @@ func TestParseModelIndexesDetailed(t *testing.T) {
 		Owner  string `bson:"owner" db:"unique"`
 	}
 
-	name, indexInfo := mongo.ParseModelIndexes(&Job{})
+	job := new(Job)
+	name, indexInfo := mongo.ParseModelIndexes(job)
 	log.Printf("Model name: %s", name)
 	log.Printf("Job indexes: %+v", indexInfo)
 
@@ -124,7 +174,8 @@ func TestParseModelIndexesDetailed(t *testing.T) {
 		Age      int    `bson:"age" db:"index"`
 	}
 
-	name, indexInfo = mongo.ParseModelIndexes(&User{})
+	user := new(User)
+	name, indexInfo = mongo.ParseModelIndexes(user)
 	log.Printf("Model name: %s", name)
 	log.Printf("User indexes: %+v", indexInfo)
 
@@ -136,9 +187,28 @@ func TestParseModelIndexesDetailed(t *testing.T) {
 		Class string `json:"class" db:"unique=user_email_domain"`
 	}
 
-	name, indexInfo = mongo.ParseModelIndexes(&Teacher{})
+	teacher := new(Teacher)
+	name, indexInfo = mongo.ParseModelIndexes(teacher)
 	log.Printf("Model name: %s", name)
 	log.Printf("User indexes: %+v", indexInfo)
+}
+
+func TestParseModelIndexesFromType(t *testing.T) {
+	type Base struct {
+		Email string `bson:"email" db:"unique"`
+	}
+	type User struct {
+		*Base
+		Parent *User
+		Age    int `bson:"age" db:"index"`
+	}
+
+	user := new(User)
+	name, indexes := mongo.ParseModelIndexes(user)
+	require.Equal(t, "user", name)
+	require.Equal(t, []string{"email"}, indexes["email"].Fields)
+	require.True(t, indexes["email"].Unique)
+	require.Equal(t, []string{"age"}, indexes["age"].Fields)
 }
 
 func TestPointer(t *testing.T) {
