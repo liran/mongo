@@ -1,93 +1,60 @@
-// Package mongo provides a high-level, type-safe wrapper around the official MongoDB Go driver.
-// It offers simplified APIs for common database operations with automatic index management,
-// transaction support, and enhanced error handling.
-//
-// Key Features:
-//   - Simplified CRUD operations with automatic ID handling
-//   - Automatic index management using struct tags
-//   - Transaction support for both single and multi-document operations
-//   - Type-safe data conversion utilities
-//   - Built-in pagination and cursor-based iteration
-//   - Comprehensive error handling with custom error types
-//
-// Example:
-//
-//	db := mongo.NewDatabase("mongodb://localhost:27017", "myapp")
-//	defer db.Close()
-//
-//	user := &User{ID: "user123", Name: "John"}
-//	err := db.Set(user)
-//
-// https://www.mongodb.com/docs/drivers/go/current/quick-start/
+// Package mongo provides a typed MongoDB SDK built on the official Go driver.
 package mongo
 
 import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"log"
+	"errors"
 	"time"
 
-	"github.com/pkg/errors"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	driver "go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// Client wraps the official MongoDB client with enhanced functionality.
-// It provides a simplified interface for common database operations.
+// Client wraps the official MongoDB client.
 type Client struct {
-	*mongo.Client
+	*driver.Client
 }
 
-// Close gracefully closes the MongoDB client connection.
-// It uses a 10-second timeout to ensure proper cleanup.
+// NewClient creates a client from uri and optional official driver settings.
+//
+// MongoDB clients connect lazily: a successful return means the URI and options
+// are valid, not that a server is reachable. Call Ping when readiness is needed.
+func NewClient(uri string, configure ...func(*ClientOptions)) (*Client, error) {
+	clientOptions := options.Client().ApplyURI(uri)
+	for _, apply := range configure {
+		apply(clientOptions)
+	}
+
+	client, err := driver.Connect(clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &Client{Client: client}
+	return result, nil
+}
+
+// Close disconnects the client with a 10-second cleanup timeout.
+// It is safe to call Close on a nil client.
 func (c *Client) Close() error {
+	if c == nil || c.Client == nil {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
 	return c.Disconnect(ctx)
 }
 
-// NewClient creates a new MongoDB client with the given connection URI.
-// Optional client options can be provided to customize the connection behavior.
-//
-// Example:
-//
-//	client := mongo.NewClient("mongodb://localhost:27017")
-//	client := mongo.NewClient(uri, func(c *mongo.ClientOptions) {
-//	    c.SetMaxPoolSize(100)
-//	})
-func NewClient(connectionURI string, opts ...func(c *ClientOptions)) *Client {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	opt := options.Client().ApplyURI(connectionURI)
-	for _, v := range opts {
-		v(opt)
-	}
-
-	client, err := mongo.Connect(ctx, opt)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return &Client{Client: client}
-}
-
-// ParseTLSConfig creates a TLS configuration from PEM certificate data.
-// This is useful for connecting to MongoDB instances with SSL/TLS encryption.
-//
-// Example:
-//
-//	tlsConfig, err := mongo.ParseTLSConfig(pemFileBytes)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-func ParseTLSConfig(pemFile []byte) (*tls.Config, error) {
+// TLSConfigFromPEM creates a TLS configuration whose root pool contains the PEM
+// certificates. It returns an error when pemFile contains no valid certificate.
+func TLSConfigFromPEM(pemFile []byte) (*tls.Config, error) {
 	tlsConfig := new(tls.Config)
 	tlsConfig.RootCAs = x509.NewCertPool()
-	ok := tlsConfig.RootCAs.AppendCertsFromPEM(pemFile)
-	if !ok {
-		return nil, errors.New("failed parsing pem file")
+	if !tlsConfig.RootCAs.AppendCertsFromPEM(pemFile) {
+		return nil, errors.New("failed parsing PEM certificate")
 	}
 	return tlsConfig, nil
 }
