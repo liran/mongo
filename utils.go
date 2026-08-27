@@ -3,13 +3,13 @@ package mongo
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/iancoleman/strcase"
-	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // TagName is the struct tag name used for database field configuration.
@@ -78,7 +78,9 @@ func ToSnake(text string) string {
 // GetIDFilter creates a MongoDB filter for finding documents by ID.
 // Returns a bson.D document with the _id field.
 func GetIDFilter(id any) any {
-	return bson.D{{Key: "_id", Value: id}}
+	idElement := bson.E{Key: "_id", Value: id}
+	filter := bson.D{idElement}
+	return filter
 }
 
 // Pointer creates a pointer to the given value.
@@ -96,7 +98,8 @@ func Pointer[T any](v T) *T {
 //	type User struct {
 //	    ID string `bson:"_id"`
 //	}
-//	id := GetID(&User{ID: "123"}) // returns "123"
+//	user := &User{ID: "123"}
+//	id := GetID(user) // returns "123"
 func GetID(model any) any {
 	modelValue := reflect.ValueOf(model)
 	k := modelValue.Kind()
@@ -173,67 +176,54 @@ type CompoundIndex struct {
 // Supports both single and compound indexes with custom naming.
 func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*CompoundIndex) {
 	indexInfo = make(map[string]*CompoundIndex)
-
-	modelValue := reflect.ValueOf(model)
-	k := modelValue.Kind()
-	for k == reflect.Pointer || k == reflect.UnsafePointer {
-		if modelValue.IsNil() {
-			return
-		}
-		modelValue = modelValue.Elem()
-		k = modelValue.Kind()
-	}
-	if k != reflect.Struct {
+	if model == nil {
 		return
 	}
 
-	// Iterate over all available fields and read the tag value
-	modelType := modelValue.Type()
+	modelType := reflect.TypeOf(model)
+	for modelType.Kind() == reflect.Pointer {
+		modelType = modelType.Elem()
+	}
+	if modelType.Kind() != reflect.Struct {
+		return
+	}
 
 	modelName = ToSnake(modelType.Name())
+	visited := make(map[reflect.Type]bool)
+	parseIndexFields(modelType, indexInfo, visited)
+	return
+}
+
+func parseIndexFields(modelType reflect.Type, indexInfo map[string]*CompoundIndex, visited map[reflect.Type]bool) {
+	if visited[modelType] {
+		return
+	}
+	visited[modelType] = true
 
 	for i := 0; i < modelType.NumField(); i++ {
 		fieldType := modelType.Field(i)
-
-		// skip unexported fields
 		if !fieldType.IsExported() {
 			continue
 		}
 
-		fieldValue := modelValue.Field(i)
-		fieldKind := fieldValue.Kind()
-
-		indexName := fieldType.Tag.Get("bson")
-		if indexName == "-" {
+		bsonTag := fieldType.Tag.Get("bson")
+		if bsonTag == "-" {
 			continue
 		}
-		if indexName != "" {
-			indexName = strings.Trim(strings.ReplaceAll(indexName, "omitempty", ""), " ,")
-		}
+
+		indexName := strings.Split(bsonTag, ",")[0]
 		if indexName == "" {
 			indexName = ToSnake(fieldType.Name)
 		}
 
-		// Get the field tag value
 		tag := fieldType.Tag.Get(TagName)
-
 		if tag == "" {
-			// Parse inner indexes for nested structures
-			if fieldKind == reflect.Pointer ||
-				fieldKind == reflect.UnsafePointer ||
-				fieldKind == reflect.Struct {
-				_, innerIndexInfo := ParseModelIndexes(fieldValue.Interface())
-				// Merge indexes
-				for k, v := range innerIndexInfo {
-					if indexInfo[k] == nil {
-						indexInfo[k] = &CompoundIndex{
-							Fields: make([]string, 0),
-							Unique: false,
-						}
-					}
-					indexInfo[k].Fields = append(indexInfo[k].Fields, v.Fields...)
-					indexInfo[k].Unique = indexInfo[k].Unique || v.Unique
-				}
+			innerType := fieldType.Type
+			for innerType.Kind() == reflect.Pointer {
+				innerType = innerType.Elem()
+			}
+			if innerType.Kind() == reflect.Struct {
+				parseIndexFields(innerType, indexInfo, visited)
 			}
 			continue
 		}
@@ -244,10 +234,11 @@ func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*Compo
 				dbTags.UniqueName = indexName
 			}
 			if indexInfo[dbTags.UniqueName] == nil {
-				indexInfo[dbTags.UniqueName] = &CompoundIndex{
+				index := &CompoundIndex{
 					Fields: make([]string, 0),
 					Unique: true,
 				}
+				indexInfo[dbTags.UniqueName] = index
 			}
 			indexInfo[dbTags.UniqueName].Fields = append(indexInfo[dbTags.UniqueName].Fields, indexName)
 		}
@@ -256,16 +247,15 @@ func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*Compo
 				dbTags.IndexName = indexName
 			}
 			if indexInfo[dbTags.IndexName] == nil {
-				indexInfo[dbTags.IndexName] = &CompoundIndex{
+				index := &CompoundIndex{
 					Fields: make([]string, 0),
 					Unique: false,
 				}
+				indexInfo[dbTags.IndexName] = index
 			}
 			indexInfo[dbTags.IndexName].Fields = append(indexInfo[dbTags.IndexName].Fields, indexName)
 		}
 	}
-
-	return
 }
 
 // TagInfo represents parsed database tag information.
@@ -379,8 +369,6 @@ func ToEntities[T any](items []M) []*T {
 	return os
 }
 
-var random = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 // RandInRange returns a random integer in the range [minInclusive, maxExclusive).
 // Uses a thread-safe random number generator.
 //
@@ -388,7 +376,7 @@ var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 //
 //	num := mongo.RandInRange(1, 100) // returns random number 1-99
 func RandInRange(minInclusive, maxExclusive int) int {
-	return random.Intn(maxExclusive-minInclusive) + minInclusive
+	return rand.IntN(maxExclusive-minInclusive) + minInclusive
 }
 
 // SequentialID generates a unique sequential identifier.
