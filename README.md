@@ -51,7 +51,7 @@ func main() {
 }
 ```
 
-`Save` is a full-document replacement with upsert semantics. The document must contain a field tagged `bson:"_id"` or `db:"pk"`.
+`Save` is a full-document replacement with upsert semantics. The document must contain a field tagged `bson:"_id"`.
 
 ## CRUD
 
@@ -106,14 +106,14 @@ log.Printf("%d total, %d returned", page.Total, len(page.Items))
 For stable large-result pagination, use `_id` cursors:
 
 ```go
-next, err := db.Find[User](ctx, active).After(lastID).Limit(20).All()
-previous, err := db.Find[User](ctx, active).After(lastID).Desc().Limit(20).All()
+next, err := db.Find[User](ctx, active).AfterID(lastID).Limit(20).All()
+previous, err := db.Find[User](ctx, active).BeforeID(lastID).Limit(20).All()
 ```
 
 `Each` traverses large result sets in bounded `_id` batches:
 
 ```go
-err := db.Find[User](ctx, active).Batch(500).Each(
+err := db.Find[User](ctx, active).BatchSize(500).Each(
 	func(user *User) (bool, error) {
 		return true, process(user)
 	},
@@ -160,6 +160,23 @@ user, err := archive.Get(id)
 Inside a transaction, use `tx.Collection[User]("archived_users")`.
 When the schema is intentionally dynamic, use `db.Collection[mongo.M](ctx, name)`.
 
+Collection names and raw documents can also be handled without reflection-based
+model values:
+
+```go
+name := mongo.CollectionName[User]()
+filter := mongo.NewDocument().Set("active", true)
+id, found := mongo.IDOf(user)
+```
+
+Convert BSON-compatible values without panics:
+
+```go
+user, err := mongo.Decode[User](rawDocument)
+users, err := mongo.DecodeMany[User](rawDocuments)
+trustedUser := mongo.MustDecode[User](trustedDocument)
+```
+
 ## Index tags
 
 ```go
@@ -173,7 +190,15 @@ type Job struct {
 err := db.EnsureIndexes[Job](ctx)
 ```
 
-Supported tags are `pk`, `index`, `unique`, `index=group`, and `unique=group`.
+Supported tags are `index`, `unique`, `index=name`, and `unique=name`.
+Reusing an explicit name creates a compound index in struct-field order. A
+single-field explicit name is preserved. Nested models use dotted BSON paths,
+while `bson:",inline"` models remain at the parent level.
+
+`EnsureIndexes` compares ordered keys, explicit names, and uniqueness. It creates
+missing indexes but never drops or rewrites existing ones. An incompatible
+existing definition returns `ErrIndexConflict` instead of silently ignoring a
+`unique` declaration.
 
 ## Errors
 
@@ -183,6 +208,8 @@ The common errors support `errors.Is`:
 - `ErrDuplicateKey`
 - `ErrNoID`
 - `ErrInvalidModelName`
+- `ErrInvalidIndexDeclaration`
+- `ErrIndexConflict`
 - `ErrEmptyFilter`
 
 ## Migration from v0.3
@@ -198,6 +225,16 @@ This release intentionally has no compatibility layer.
 | `Pagination` returning `[]M` | `db.Find[User](ctx, filter).Page(...)` |
 | `txn.Model("archive")` | `db.Collection[User](ctx, "archive")` |
 | `DB.Txn(ctx, fn, true)` | `DB.Transaction(ctx, fn)` |
+| `GetModelName(model)` | `CollectionName[Model]()` |
+| `Map()` | `NewDocument()` |
+| `GetID(model)` | `IDOf(model)` |
+| `GetIDFilter(id)` | `IDFilter(id)` |
+| `Pointer(value)` | `Ptr(value)` |
+| `ToEntity[T](document)` | `Decode[T](document)` or explicit-panic `MustDecode[T](document)` |
+| `query.After(id).Desc()` | `query.BeforeID(id)` |
+| `query.After(id)` | `query.AfterID(id)` |
+| `query.Batch(size)` | `query.BatchSize(size)` |
+| `ParseTLSConfig(pem)` | `TLSConfigFromPEM(pem)` |
 
 ## Tests
 
