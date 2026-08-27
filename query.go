@@ -117,7 +117,8 @@ func (q *Query[T]) All() ([]*T, error) {
 	return documents, nil
 }
 
-// Page returns one offset-based page and its exact total matching count.
+// Page returns one offset-based page and its total matching count. Unfiltered
+// queries use the collection metadata estimate to avoid scanning every document.
 // Page numbers less than one become 1; page sizes less than one become 20.
 //
 // Example:
@@ -144,16 +145,22 @@ func (q *Query[T]) Each(callback func(*T) (bool, error)) error {
 	return q.collection.each(q, callback)
 }
 
-// Count returns the exact number of matching documents, including an ID cursor.
+// Count returns the number of matching documents, including an ID cursor.
+// Unfiltered queries use the collection metadata estimate.
 func (q *Query[T]) Count() (int64, error) {
 	filter := queryFilter(q)
-	return q.collection.collection.CountDocuments(q.collection.ctx, filter)
+	return q.collection.count(filter)
 }
 
 // Exists reports whether at least one document matches, including an ID cursor.
 func (q *Query[T]) Exists() (bool, error) {
-	countOptions := options.Count().SetLimit(1)
 	filter := queryFilter(q)
+	if isEmptyFilter(filter) {
+		count, err := q.collection.count(filter)
+		return count > 0, err
+	}
+
+	countOptions := options.Count().SetLimit(1)
 	count, err := q.collection.collection.CountDocuments(q.collection.ctx, filter, countOptions)
 	return count > 0, err
 }
