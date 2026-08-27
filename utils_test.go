@@ -197,6 +197,28 @@ func TestIndexesFor(t *testing.T) {
 		require.Equal(t, "postalcode", definitions[2].Keys[0].Key)
 	})
 
+	t.Run("anonymous inline pointer", func(t *testing.T) {
+		type Job struct {
+			Status string `bson:"status" db:"index"`
+			Group  string `bson:"group,omitempty" db:"index"`
+		}
+		type SearchJob struct {
+			*Job      `bson:",inline"`
+			TaskID    string `bson:"task_id,omitempty" db:"index"`
+			Signature string `bson:"signature" db:"unique"`
+		}
+
+		// No Job value is initialized: index discovery uses type metadata.
+		definitions, err := mongo.IndexesFor[SearchJob]()
+		require.NoError(t, err)
+		require.Len(t, definitions, 4)
+		require.Equal(t, bson.D{{Key: "status", Value: 1}}, definitions[0].Keys)
+		require.Equal(t, bson.D{{Key: "group", Value: 1}}, definitions[1].Keys)
+		require.Equal(t, bson.D{{Key: "task_id", Value: 1}}, definitions[2].Keys)
+		require.Equal(t, bson.D{{Key: "signature", Value: 1}}, definitions[3].Keys)
+		require.True(t, definitions[3].Unique)
+	})
+
 	t.Run("unique subsumes same standalone index", func(t *testing.T) {
 		type User struct {
 			Email string `bson:"email" db:"unique,index"`
