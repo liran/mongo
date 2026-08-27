@@ -12,13 +12,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/x/mongo/driver/drivertest"
+	"go.mongodb.org/mongo-driver/v2/x/mongo/driver/xoptions"
 )
 
 func TestNewClientAndOpen(t *testing.T) {
 	t.Run("client", func(t *testing.T) {
 		deployment := drivertest.NewMockDeployment()
 		configure := func(clientOptions *ClientOptions) {
-			clientOptions.Deployment = deployment
+			err := xoptions.SetInternalClientOptions(clientOptions, "deployment", deployment)
+			require.NoError(t, err)
 		}
 
 		client, err := NewClient("mongodb://localhost", configure)
@@ -30,7 +32,8 @@ func TestNewClientAndOpen(t *testing.T) {
 	t.Run("database", func(t *testing.T) {
 		deployment := drivertest.NewMockDeployment()
 		configure := func(clientOptions *ClientOptions) {
-			clientOptions.Deployment = deployment
+			err := xoptions.SetInternalClientOptions(clientOptions, "deployment", deployment)
+			require.NoError(t, err)
 		}
 
 		database, err := Open("mongodb://localhost", "unit", configure)

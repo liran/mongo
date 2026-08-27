@@ -10,6 +10,7 @@ import (
 	driver "go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/x/mongo/driver/drivertest"
+	"go.mongodb.org/mongo-driver/v2/x/mongo/driver/xoptions"
 )
 
 type operationUser struct {
@@ -37,7 +38,8 @@ func newMockDatabase(t *testing.T, responses ...bson.D) *Database {
 
 	deployment := drivertest.NewMockDeployment(responses...)
 	clientOptions := options.Client()
-	clientOptions.Deployment = deployment
+	err := xoptions.SetInternalClientOptions(clientOptions, "deployment", deployment)
+	require.NoError(t, err)
 	client, err := driver.Connect(clientOptions)
 	require.NoError(t, err)
 
