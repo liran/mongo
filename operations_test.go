@@ -343,12 +343,30 @@ func TestDatabaseReadOperations(t *testing.T) {
 		require.Equal(t, int64(2), count)
 	})
 
+	t.Run("unfiltered count uses estimate", func(t *testing.T) {
+		response := successResponse(bson.E{Key: "n", Value: int64(2)})
+		db := newMockDatabase(t, response)
+
+		count, err := db.Find[operationUser](ctx).Count()
+		require.NoError(t, err)
+		require.Equal(t, int64(2), count)
+	})
+
 	t.Run("exists", func(t *testing.T) {
 		countDocument := bson.D{{Key: "n", Value: int64(1)}}
 		response := cursorResponse("unit.operation_user", countDocument)
 		db := newMockDatabase(t, response)
 
 		exists, err := db.Find[operationUser](ctx, M{"name": "Alice"}).Exists()
+		require.NoError(t, err)
+		require.True(t, exists)
+	})
+
+	t.Run("unfiltered exists uses estimate", func(t *testing.T) {
+		response := successResponse(bson.E{Key: "n", Value: int64(1)})
+		db := newMockDatabase(t, response)
+
+		exists, err := db.Find[operationUser](ctx).Exists()
 		require.NoError(t, err)
 		require.True(t, exists)
 	})
@@ -365,9 +383,8 @@ func TestDatabaseReadOperations(t *testing.T) {
 		require.Len(t, page.Items, 1)
 	})
 
-	t.Run("empty page uses defaults", func(t *testing.T) {
-		countDocument := bson.D{{Key: "n", Value: int64(0)}}
-		response := cursorResponse("unit.operation_user", countDocument)
+	t.Run("unfiltered empty page uses estimate and defaults", func(t *testing.T) {
+		response := successResponse(bson.E{Key: "n", Value: int64(0)})
 		db := newMockDatabase(t, response)
 
 		page, err := db.Find[operationUser](ctx).Page(0, 0)

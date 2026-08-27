@@ -155,6 +155,13 @@ func (c *Collection[T]) Find(filter ...any) *Query[T] {
 	return query
 }
 
+func (c *Collection[T]) count(filter any) (int64, error) {
+	if isEmptyFilter(filter) {
+		return c.collection.EstimatedDocumentCount(c.ctx)
+	}
+	return c.collection.CountDocuments(c.ctx, filter)
+}
+
 func (c *Collection[T]) page(query *Query[T], page, pageSize int64) (*Page[T], error) {
 	if page < 1 {
 		page = 1
@@ -164,7 +171,7 @@ func (c *Collection[T]) page(query *Query[T], page, pageSize int64) (*Page[T], e
 	}
 
 	filter := queryFilter(query)
-	total, err := c.collection.CountDocuments(c.ctx, filter)
+	total, err := c.count(filter)
 	if err != nil {
 		return nil, err
 	}
