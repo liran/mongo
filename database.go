@@ -3,7 +3,6 @@ package mongo
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	driver "go.mongodb.org/mongo-driver/v2/mongo"
@@ -52,14 +51,14 @@ func (d *Database) Close() error {
 //	archive := db.Collection[User](ctx, "archived_users")
 //	user, err := archive.Get("user-1")
 func (d *Database) Collection[T any](ctx context.Context, name string) *Collection[T] {
-	return newCollection[T](d, contextOrBackground(ctx), name)
+	return newCollection[T](d, ctx, name)
 }
 
 // Save fully replaces a document by _id, inserting it when absent.
 //
 // Save is not a partial update: fields omitted from document are removed from
 // an existing record. Use Update to change selected fields. T is inferred from
-// document, whose _id must be tagged with bson:"_id" or db:"pk".
+// document, whose _id must be tagged with bson:"_id".
 //
 // Example:
 //
@@ -142,23 +141,26 @@ func (d *Database) Find[T any](ctx context.Context, filter ...any) *Query[T] {
 
 // EnsureIndexes creates indexes declared by db struct tags on T.
 //
-// Existing indexes with the same ordered keys are left unchanged. This method
-// creates missing indexes; it does not alter or remove existing definitions.
+// Existing indexes must satisfy the declared keys, custom name, and unique
+// option. Conflicting definitions return ErrIndexConflict. This method creates
+// missing indexes but never alters or removes existing indexes.
 //
 // Example:
 //
 //	err := db.EnsureIndexes[User](ctx)
 func (d *Database) EnsureIndexes[T any](ctx context.Context) error {
-	document := new(T)
-	_, indexInfo := ParseModelIndexes(document)
-	return d.createIndexes(contextOrBackground(ctx), modelName[T](), indexInfo)
+	definitions, err := IndexesFor[T]()
+	if err != nil {
+		return err
+	}
+	return d.createIndexes(ctx, CollectionName[T](), definitions)
 }
 
-func (d *Database) createIndexes(ctx context.Context, name string, indexInfo map[string]*CompoundIndex) error {
+func (d *Database) createIndexes(ctx context.Context, name string, definitions []IndexDefinition) error {
 	if name == "" {
 		return ErrInvalidModelName
 	}
-	if len(indexInfo) == 0 {
+	if len(definitions) == 0 {
 		return nil
 	}
 
@@ -168,59 +170,73 @@ func (d *Database) createIndexes(ctx context.Context, name string, indexInfo map
 		return err
 	}
 
-	existingKeys := make(map[string]struct{}, len(specifications))
+	existingIndexes := make([]existingIndex, 0, len(specifications))
 	for _, specification := range specifications {
 		keys := bson.D{}
 		if err := bson.Unmarshal(specification.KeysDocument, &keys); err != nil {
 			return err
 		}
-		existingKeys[keysToString(keys)] = struct{}{}
+		unique := specification.Unique != nil && *specification.Unique
+		existing := existingIndex{Name: specification.Name, Keys: keys, Unique: unique}
+		existingIndexes = append(existingIndexes, existing)
 	}
 
-	for groupName, info := range indexInfo {
-		if len(info.Fields) == 0 {
+	for _, definition := range definitions {
+		satisfied, conflict := matchExistingIndex(definition, existingIndexes)
+		if satisfied {
 			continue
 		}
-
-		keys := make(bson.D, 0, len(info.Fields))
-		for _, fieldName := range info.Fields {
-			key := bson.E{Key: fieldName, Value: 1}
-			keys = append(keys, key)
-		}
-		keyString := keysToString(keys)
-		if _, exists := existingKeys[keyString]; exists {
-			continue
+		if conflict != "" {
+			return fmt.Errorf("%w: %s", ErrIndexConflict, conflict)
 		}
 
-		indexOptions := options.Index().SetUnique(info.Unique)
-		if len(info.Fields) > 1 {
-			indexOptions.SetName(groupName)
+		indexOptions := options.Index().SetUnique(definition.Unique)
+		if definition.Name != "" {
+			indexOptions.SetName(definition.Name)
 		}
-		indexModel := driver.IndexModel{Keys: keys, Options: indexOptions}
+		indexModel := driver.IndexModel{Keys: definition.Keys, Options: indexOptions}
 		if _, err := indexView.CreateOne(ctx, indexModel); err != nil {
 			return err
 		}
-		existingKeys[keyString] = struct{}{}
+		created := existingIndex(definition)
+		existingIndexes = append(existingIndexes, created)
 	}
 
 	return nil
 }
 
+type existingIndex struct {
+	Name   string
+	Keys   bson.D
+	Unique bool
+}
+
+func matchExistingIndex(definition IndexDefinition, indexes []existingIndex) (bool, string) {
+	conflict := ""
+	for _, index := range indexes {
+		if definition.Name != "" && definition.Name == index.Name && !indexKeysEqual(definition.Keys, index.Keys) {
+			return false, fmt.Sprintf("name %q already uses different keys", definition.Name)
+		}
+		if !indexKeysEqual(definition.Keys, index.Keys) {
+			continue
+		}
+
+		nameMatches := definition.Name == "" || definition.Name == index.Name
+		uniqueMatches := !definition.Unique || index.Unique
+		if nameMatches && uniqueMatches {
+			return true, ""
+		}
+		if definition.Name != "" && !nameMatches {
+			conflict = fmt.Sprintf("keys %v already exist as %q instead of %q", definition.Keys, index.Name, definition.Name)
+			continue
+		}
+		if definition.Unique && !index.Unique {
+			conflict = fmt.Sprintf("keys %v already exist without unique=true", definition.Keys)
+		}
+	}
+	return false, conflict
+}
+
 func defaultCollection[T any](database *Database, ctx context.Context) *Collection[T] {
-	return newCollection[T](database, contextOrBackground(ctx), modelName[T]())
-}
-
-func contextOrBackground(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
-	}
-	return ctx
-}
-
-func keysToString(keys bson.D) string {
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
-		parts = append(parts, key.Key+":"+fmt.Sprintf("%v", key.Value))
-	}
-	return strings.Join(parts, ",")
+	return newCollection[T](database, ctx, CollectionName[T]())
 }

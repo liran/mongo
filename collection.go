@@ -33,12 +33,12 @@ func (c *Collection[T]) Raw() *driver.Collection {
 // Save fully replaces a document by _id, inserting it when absent.
 // Fields omitted from document are removed from an existing record.
 func (c *Collection[T]) Save(document *T) error {
-	id := GetID(document)
-	if !hasID(id) {
+	id, found := IDOf(document)
+	if !found || !hasID(id) {
 		return ErrNoID
 	}
 
-	filter := GetIDFilter(id)
+	filter := IDFilter(id)
 	replaceOptions := options.Replace().SetUpsert(true)
 	_, err := c.collection.ReplaceOne(c.ctx, filter, document, replaceOptions)
 	return normalizeWriteError(err)
@@ -53,13 +53,13 @@ func (c *Collection[T]) SaveMany(documents ...*T) error {
 
 	writes := make([]driver.WriteModel, 0, len(documents))
 	for _, document := range documents {
-		id := GetID(document)
-		if !hasID(id) {
+		id, found := IDOf(document)
+		if !found || !hasID(id) {
 			return ErrNoID
 		}
 
 		write := driver.NewReplaceOneModel()
-		write.SetFilter(GetIDFilter(id))
+		write.SetFilter(IDFilter(id))
 		write.SetReplacement(document)
 		write.SetUpsert(true)
 		writes = append(writes, write)
@@ -71,7 +71,7 @@ func (c *Collection[T]) SaveMany(documents ...*T) error {
 
 // Get retrieves a document by _id and returns ErrRecordNotFound when absent.
 func (c *Collection[T]) Get(id any) (*T, error) {
-	result := c.collection.FindOne(c.ctx, GetIDFilter(id))
+	result := c.collection.FindOne(c.ctx, IDFilter(id))
 	document := new(T)
 	if err := result.Decode(document); err != nil {
 		return nil, normalizeReadError(err)
@@ -88,7 +88,7 @@ func (c *Collection[T]) Update(id, fields any) (*T, error) {
 	}
 
 	findOptions := options.FindOneAndUpdate().SetReturnDocument(options.After)
-	result := c.collection.FindOneAndUpdate(c.ctx, GetIDFilter(id), update, findOptions)
+	result := c.collection.FindOneAndUpdate(c.ctx, IDFilter(id), update, findOptions)
 	document := new(T)
 	if err := result.Decode(document); err != nil {
 		return nil, normalizeReadError(err)
@@ -101,7 +101,7 @@ func (c *Collection[T]) Increment(id, fields any) (*T, error) {
 	incElement := bson.E{Key: "$inc", Value: fields}
 	update := bson.D{incElement}
 	findOptions := options.FindOneAndUpdate().SetReturnDocument(options.After)
-	result := c.collection.FindOneAndUpdate(c.ctx, GetIDFilter(id), update, findOptions)
+	result := c.collection.FindOneAndUpdate(c.ctx, IDFilter(id), update, findOptions)
 	document := new(T)
 	if err := result.Decode(document); err != nil {
 		return nil, normalizeReadError(err)
@@ -111,7 +111,7 @@ func (c *Collection[T]) Increment(id, fields any) (*T, error) {
 
 // Delete removes a document by _id. Deleting a missing document succeeds.
 func (c *Collection[T]) Delete(id any) error {
-	_, err := c.collection.DeleteOne(c.ctx, GetIDFilter(id))
+	_, err := c.collection.DeleteOne(c.ctx, IDFilter(id))
 	return normalizeWriteError(err)
 }
 
@@ -262,7 +262,7 @@ func (c *Collection[T]) consumeBatch(cursor *driver.Cursor, callback func(*T) (b
 		if err != nil || !continues {
 			return count, lastID, false, err
 		}
-		lastID = GetID(document)
+		lastID, _ = IDOf(document)
 		count++
 	}
 	if err := cursor.Err(); err != nil {
@@ -278,25 +278,6 @@ func newCollection[T any](database *Database, ctx context.Context, name string) 
 
 	collection := &Collection[T]{ctx: ctx, collection: database.Database.Collection(name)}
 	return collection
-}
-
-func modelName[T any]() string {
-	document := new(T)
-	if namer, ok := any(document).(CollectionNamer); ok {
-		name := namer.CollectionName()
-		if name != "" {
-			return name
-		}
-	}
-
-	documentType := reflect.TypeFor[T]()
-	for documentType.Kind() == reflect.Pointer {
-		documentType = documentType.Elem()
-	}
-	if documentType.Name() == "" {
-		return ""
-	}
-	return ToSnake(documentType.Name())
 }
 
 func makeUpdateDocument(fields any) (bson.D, error) {
@@ -343,10 +324,20 @@ func hasID(id any) bool {
 		return false
 	}
 	value := reflect.ValueOf(id)
-	if value.Kind() == reflect.String {
-		return value.Len() > 0
+	for value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return false
+		}
+		value = value.Elem()
 	}
-	return true
+	switch value.Kind() {
+	case reflect.Pointer:
+		return !value.IsNil()
+	case reflect.String:
+		return value.Len() > 0
+	default:
+		return true
+	}
 }
 
 func filterAfterID(filter any, comparison string, id any) any {

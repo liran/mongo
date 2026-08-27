@@ -19,6 +19,12 @@ type exampleAccount struct {
 	Balance int64  `bson:"balance"`
 }
 
+type exampleIndexedJob struct {
+	ID     string `bson:"_id"`
+	TaskID string `bson:"task_id" db:"index,unique=task_url"`
+	URL    string `bson:"url" db:"unique=task_url"`
+}
+
 func openExampleDatabase() *mongo.Database {
 	db, err := mongo.Open("mongodb://localhost:27017", "example")
 	if err != nil {
@@ -99,7 +105,7 @@ func ExampleQuery_Each() {
 
 	ctx := context.Background()
 	filter := mongo.M{"active": true}
-	err := db.Find[exampleUser](ctx, filter).Batch(500).Each(
+	err := db.Find[exampleUser](ctx, filter).BatchSize(500).Each(
 		func(user *exampleUser) (bool, error) {
 			log.Printf("processing %s", user.ID)
 			return true, nil
@@ -123,6 +129,16 @@ func ExampleDatabase_Collection() {
 	log.Printf("loaded %s", user.Name)
 }
 
+func ExampleDatabase_EnsureIndexes() {
+	db := openExampleDatabase()
+	defer db.Close()
+
+	ctx := context.Background()
+	if err := db.EnsureIndexes[exampleIndexedJob](ctx); err != nil {
+		log.Fatal(err)
+	}
+}
+
 func ExampleDatabase_Transaction() {
 	db := openExampleDatabase()
 	defer db.Close()
@@ -140,4 +156,32 @@ func ExampleDatabase_Transaction() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func ExampleCollectionName() {
+	name := mongo.CollectionName[exampleUser]()
+	log.Printf("collection: %s", name)
+}
+
+func ExampleIDOf() {
+	user := &exampleUser{ID: "user-1"}
+	id, found := mongo.IDOf(user)
+	log.Printf("id: %v, found: %t", id, found)
+}
+
+func ExampleDecode() {
+	document := mongo.M{"_id": "user-1", "name": "Liran"}
+	user, err := mongo.Decode[exampleUser](document)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("decoded %s", user.Name)
+}
+
+func ExampleIndexesFor() {
+	definitions, err := mongo.IndexesFor[exampleIndexedJob]()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("declared indexes: %d", len(definitions))
 }

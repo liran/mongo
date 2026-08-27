@@ -25,6 +25,16 @@ type indexedOperationUser struct {
 	Email string `bson:"email" db:"unique"`
 }
 
+type regularIndexedOperationUser struct {
+	ID    string `bson:"_id"`
+	Email string `bson:"email" db:"index"`
+}
+
+type namedIndexedOperationUser struct {
+	ID    string `bson:"_id"`
+	Email string `bson:"email" db:"unique=user_email"`
+}
+
 type namedOperationUser struct {
 	ID string `bson:"_id"`
 }
@@ -295,11 +305,30 @@ func TestDatabaseReadOperations(t *testing.T) {
 		require.Equal(t, "Bob", user.Name)
 	})
 
+	t.Run("find first with ID cursor", func(t *testing.T) {
+		response := cursorResponse("unit.operation_user", secondDocument)
+		db := newMockDatabase(t, response)
+		projection := M{"name": 1}
+
+		user, err := db.Find[operationUser](ctx).AfterID("user-1").Select(projection).First()
+		require.NoError(t, err)
+		require.Equal(t, "Bob", user.Name)
+	})
+
 	t.Run("descending cursor", func(t *testing.T) {
 		response := cursorResponse("unit.operation_user", firstDocument)
 		db := newMockDatabase(t, response)
 
-		users, err := db.Find[operationUser](ctx).After("user-2").Desc().All()
+		users, err := db.Find[operationUser](ctx).BeforeID("user-2").All()
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+	})
+
+	t.Run("ascending cursor", func(t *testing.T) {
+		response := cursorResponse("unit.operation_user", secondDocument)
+		db := newMockDatabase(t, response)
+
+		users, err := db.Find[operationUser](ctx).AfterID("user-1").All()
 		require.NoError(t, err)
 		require.Len(t, users, 1)
 	})
@@ -356,7 +385,7 @@ func TestDatabaseReadOperations(t *testing.T) {
 		db := newMockDatabase(t, firstBatch, secondBatch)
 		ids := make([]string, 0, 3)
 
-		err := db.Find[operationUser](ctx).Batch(2).Each(func(user *operationUser) (bool, error) {
+		err := db.Find[operationUser](ctx).BatchSize(2).Each(func(user *operationUser) (bool, error) {
 			ids = append(ids, user.ID)
 			return true, nil
 		})
@@ -453,6 +482,99 @@ func TestCollectionAndIndexes(t *testing.T) {
 
 		err := db.EnsureIndexes[indexedOperationUser](ctx)
 		require.NoError(t, err)
+	})
+
+	t.Run("rejects weaker existing index", func(t *testing.T) {
+		emailKeys := bson.D{{Key: "email", Value: 1}}
+		emailSpecification := bson.D{
+			{Key: "v", Value: int32(2)},
+			{Key: "key", Value: emailKeys},
+			{Key: "name", Value: "email_1"},
+		}
+		listResponse := cursorResponse("unit.indexed_operation_user", emailSpecification)
+		db := newMockDatabase(t, listResponse)
+
+		err := db.EnsureIndexes[indexedOperationUser](ctx)
+		require.ErrorIs(t, err, ErrIndexConflict)
+	})
+
+	t.Run("accepts stronger existing index", func(t *testing.T) {
+		emailKeys := bson.D{{Key: "email", Value: 1}}
+		emailSpecification := bson.D{
+			{Key: "v", Value: int32(2)},
+			{Key: "key", Value: emailKeys},
+			{Key: "name", Value: "email_1"},
+			{Key: "unique", Value: true},
+		}
+		listResponse := cursorResponse("unit.regular_indexed_operation_user", emailSpecification)
+		db := newMockDatabase(t, listResponse)
+
+		err := db.EnsureIndexes[regularIndexedOperationUser](ctx)
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects custom name mismatch", func(t *testing.T) {
+		emailKeys := bson.D{{Key: "email", Value: 1}}
+		emailSpecification := bson.D{
+			{Key: "v", Value: int32(2)},
+			{Key: "key", Value: emailKeys},
+			{Key: "name", Value: "legacy_email"},
+			{Key: "unique", Value: true},
+		}
+		listResponse := cursorResponse("unit.named_indexed_operation_user", emailSpecification)
+		db := newMockDatabase(t, listResponse)
+
+		err := db.EnsureIndexes[namedIndexedOperationUser](ctx)
+		require.ErrorIs(t, err, ErrIndexConflict)
+	})
+
+	t.Run("rejects custom name key mismatch", func(t *testing.T) {
+		usernameKeys := bson.D{{Key: "username", Value: 1}}
+		usernameSpecification := bson.D{
+			{Key: "v", Value: int32(2)},
+			{Key: "key", Value: usernameKeys},
+			{Key: "name", Value: "user_email"},
+			{Key: "unique", Value: true},
+		}
+		listResponse := cursorResponse("unit.named_indexed_operation_user", usernameSpecification)
+		db := newMockDatabase(t, listResponse)
+
+		err := db.EnsureIndexes[namedIndexedOperationUser](ctx)
+		require.ErrorIs(t, err, ErrIndexConflict)
+	})
+
+	t.Run("accepts matching custom name", func(t *testing.T) {
+		emailKeys := bson.D{{Key: "email", Value: 1}}
+		emailSpecification := bson.D{
+			{Key: "v", Value: int32(2)},
+			{Key: "key", Value: emailKeys},
+			{Key: "name", Value: "user_email"},
+			{Key: "unique", Value: true},
+		}
+		listResponse := cursorResponse("unit.named_indexed_operation_user", emailSpecification)
+		db := newMockDatabase(t, listResponse)
+
+		err := db.EnsureIndexes[namedIndexedOperationUser](ctx)
+		require.NoError(t, err)
+	})
+
+	t.Run("returns create index error", func(t *testing.T) {
+		idKeys := bson.D{{Key: "_id", Value: 1}}
+		idSpecification := bson.D{
+			{Key: "v", Value: int32(2)},
+			{Key: "key", Value: idKeys},
+			{Key: "name", Value: "_id_"},
+		}
+		listResponse := cursorResponse("unit.indexed_operation_user", idSpecification)
+		createError := bson.D{
+			{Key: "ok", Value: 0},
+			{Key: "code", Value: int32(85)},
+			{Key: "errmsg", Value: "index conflict"},
+		}
+		db := newMockDatabase(t, listResponse, createError)
+
+		err := db.EnsureIndexes[indexedOperationUser](ctx)
+		require.Error(t, err)
 	})
 }
 

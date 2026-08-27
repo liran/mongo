@@ -48,9 +48,9 @@ func (c *Client) Close() error {
 	return c.Disconnect(ctx)
 }
 
-// ParseTLSConfig creates a TLS configuration whose root pool contains the PEM
+// TLSConfigFromPEM creates a TLS configuration whose root pool contains the PEM
 // certificates. It returns an error when pemFile contains no valid certificate.
-func ParseTLSConfig(pemFile []byte) (*tls.Config, error) {
+func TLSConfigFromPEM(pemFile []byte) (*tls.Config, error) {
 	tlsConfig := new(tls.Config)
 	tlsConfig.RootCAs = x509.NewCertPool()
 	if !tlsConfig.RootCAs.AppendCertsFromPEM(pemFile) {

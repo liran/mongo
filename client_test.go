@@ -56,16 +56,16 @@ func TestNewClientAndOpen(t *testing.T) {
 	})
 }
 
-func TestParseTLSConfig(t *testing.T) {
+func TestTLSConfigFromPEM(t *testing.T) {
 	t.Run("valid certificate", func(t *testing.T) {
 		certificate := makeTestCertificate(t)
-		config, err := ParseTLSConfig(certificate)
+		config, err := TLSConfigFromPEM(certificate)
 		require.NoError(t, err)
 		require.NotNil(t, config.RootCAs)
 	})
 
 	t.Run("invalid certificate", func(t *testing.T) {
-		_, err := ParseTLSConfig([]byte("not a certificate"))
+		_, err := TLSConfigFromPEM([]byte("not a certificate"))
 		require.Error(t, err)
 	})
 }

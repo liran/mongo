@@ -25,8 +25,8 @@ type Query[T any] struct {
 	descending bool
 }
 
-// Sort sets the MongoDB sort document. After uses _id ordering and therefore
-// takes precedence over Sort.
+// Sort sets the MongoDB sort document. ID cursor methods use _id ordering and
+// take precedence over Sort.
 func (q *Query[T]) Sort(sort any) *Query[T] {
 	next := q.clone()
 	next.sort = sort
@@ -48,25 +48,25 @@ func (q *Query[T]) Limit(limit int64) *Query[T] {
 	return next
 }
 
-// After starts exclusive _id cursor pagination after id. Combined with Desc,
-// it selects IDs lower than id; otherwise it selects IDs greater than id.
-func (q *Query[T]) After(id any) *Query[T] {
+// AfterID starts exclusive ascending _id cursor pagination after id.
+func (q *Query[T]) AfterID(id any) *Query[T] {
 	next := q.clone()
 	next.after = id
+	next.descending = false
 	return next
 }
 
-// Desc uses descending _id order for After and Each. It does not replace Sort
-// for ordinary queries that do not use an _id cursor.
-func (q *Query[T]) Desc() *Query[T] {
+// BeforeID starts exclusive descending _id cursor pagination before id.
+func (q *Query[T]) BeforeID(id any) *Query[T] {
 	next := q.clone()
+	next.after = id
 	next.descending = true
 	return next
 }
 
-// Batch sets the maximum documents fetched by each request made by Each.
+// BatchSize sets the maximum documents fetched by each request made by Each.
 // Values less than one use the default batch size of 100.
-func (q *Query[T]) Batch(size int) *Query[T] {
+func (q *Query[T]) BatchSize(size int) *Query[T] {
 	next := q.clone()
 	next.batchSize = size
 	return next
@@ -98,7 +98,7 @@ func (q *Query[T]) First() (*T, error) {
 	return document, nil
 }
 
-// All returns all matching documents, subject to Sort, Select, After, and Limit.
+// All returns all matching documents, subject to Sort, Select, ID cursor, and Limit.
 // It returns a non-nil empty slice when no document matches.
 func (q *Query[T]) All() ([]*T, error) {
 	findOptions := options.Find()
@@ -135,7 +135,7 @@ func (q *Query[T]) Page(number, pageSize int64) (*Page[T], error) {
 //
 // Example:
 //
-//	err := db.Find[User](ctx, filter).Batch(500).Each(
+//	err := db.Find[User](ctx, filter).BatchSize(500).Each(
 //		func(user *User) (bool, error) {
 //			return true, process(user)
 //		},
@@ -144,13 +144,13 @@ func (q *Query[T]) Each(callback func(*T) (bool, error)) error {
 	return q.collection.each(q, callback)
 }
 
-// Count returns the exact number of matching documents, including After when set.
+// Count returns the exact number of matching documents, including an ID cursor.
 func (q *Query[T]) Count() (int64, error) {
 	filter := queryFilter(q)
 	return q.collection.collection.CountDocuments(q.collection.ctx, filter)
 }
 
-// Exists reports whether at least one document matches, including After when set.
+// Exists reports whether at least one document matches, including an ID cursor.
 func (q *Query[T]) Exists() (bool, error) {
 	countOptions := options.Count().SetLimit(1)
 	filter := queryFilter(q)

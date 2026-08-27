@@ -8,8 +8,14 @@ var (
 	ErrInvalidModelName = errors.New("invalid model name")
 
 	// ErrNoID is returned when a model does not have a valid primary key.
-	// The primary key must be marked with bson:"_id" or db:"pk" tag.
-	ErrNoID = errors.New(`no id. not found primary key from model, defined by tag db:"pk" or bson:"_id"`)
+	// The primary key must be marked with bson:"_id".
+	ErrNoID = errors.New(`document has no valid bson:"_id" field`)
+
+	// ErrInvalidIndexDeclaration is returned for malformed or conflicting db tags.
+	ErrInvalidIndexDeclaration = errors.New("invalid index declaration")
+
+	// ErrIndexConflict is returned when a declared index differs from an existing index.
+	ErrIndexConflict = errors.New("index conflicts with existing definition")
 
 	// ErrRecordNotFound is returned when a requested record does not exist.
 	ErrRecordNotFound = errors.New("record not found")

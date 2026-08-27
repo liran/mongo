@@ -3,393 +3,468 @@ package mongo
 
 import (
 	"fmt"
-	"math/rand/v2"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/iancoleman/strcase"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// TagName is the struct tag name used for database field configuration.
-// It supports options like "index", "unique", and "pk".
-const TagName = "db"
+const indexTagName = "db"
 
-// M is an alias for bson.M, providing a convenient type for MongoDB documents.
-// It includes helper methods for common document operations.
+// M is a MongoDB document with chainable field helpers.
 type M bson.M
 
-// Set sets a field value in the document and returns the document for chaining.
-func (m M) Set(k string, v any) M {
-	m[k] = v
+// Set assigns a field and returns the document for chaining.
+func (m M) Set(key string, value any) M {
+	if m == nil {
+		m = make(M)
+	}
+	m[key] = value
 	return m
 }
 
-// Del removes a field from the document and returns the document for chaining.
-func (m M) Del(k string) M {
-	delete(m, k)
+// Unset removes a field and returns the document for chaining.
+func (m M) Unset(key string) M {
+	delete(m, key)
 	return m
 }
 
-// Get retrieves a field value from the document.
-// Returns the value and a boolean indicating if the field exists.
-func (m M) Get(k string) (any, bool) {
-	val, ok := m[k]
-	return val, ok
+// Get returns a field and reports whether it exists.
+func (m M) Get(key string) (any, bool) {
+	value, exists := m[key]
+	return value, exists
 }
 
-// Map creates a new empty MongoDB document.
-func Map() M {
+// NewDocument creates an empty MongoDB document.
+//
+// Example:
+//
+//	filter := mongo.NewDocument().Set("active", true)
+func NewDocument() M {
 	return make(M)
 }
 
-// GetModelName extracts the model name from a Go type.
-// It handles pointers, primitives, and structs, converting names to snake_case.
-func GetModelName(model any) string {
-	v := reflect.ValueOf(model)
-	k := v.Kind()
-	if k == reflect.Invalid {
+// CollectionName returns the collection name for T.
+//
+// Named struct types use snake_case. A pointer-receiver CollectionName method
+// overrides the default. Unnamed and non-struct types return an empty string.
+func CollectionName[T any]() string {
+	modelType := reflect.TypeFor[T]()
+	for modelType.Kind() == reflect.Pointer {
+		modelType = modelType.Elem()
+	}
+	if modelType.Kind() != reflect.Struct || modelType.Name() == "" {
 		return ""
 	}
-	if k == reflect.Pointer || k == reflect.UnsafePointer {
-		if v.IsNil() {
-			return ""
-		}
-		v = v.Elem()
-	}
 
-	var name string
-	// general data type，such as: int float bool  string .....
-	if k >= 1 && k <= 16 || k == 24 {
-		name = fmt.Sprintf("%v", model)
-	} else {
-		name = v.Type().Name()
+	document := reflect.New(modelType).Interface()
+	if namer, ok := document.(CollectionNamer); ok {
+		name := namer.CollectionName()
+		if name != "" {
+			return name
+		}
 	}
-	return ToSnake(name)
+	return toSnake(modelType.Name())
 }
 
-// ToSnake converts a string to snake_case format.
-// Uses the strcase library with dot preservation.
-func ToSnake(text string) string {
+func toSnake(text string) string {
 	return strcase.ToSnakeWithIgnore(text, ".")
 }
 
-// GetIDFilter creates a MongoDB filter for finding documents by ID.
-// Returns a bson.D document with the _id field.
-func GetIDFilter(id any) any {
+// IDFilter returns an _id equality filter.
+func IDFilter(id any) bson.D {
 	idElement := bson.E{Key: "_id", Value: id}
 	filter := bson.D{idElement}
 	return filter
 }
 
-// Pointer creates a pointer to the given value.
-// Useful for creating optional fields in structs.
-func Pointer[T any](v T) *T {
-	return &v
+// Ptr returns a pointer to value.
+func Ptr[T any](value T) *T {
+	return &value
 }
 
-// GetID extracts the primary key value from a model.
-// It searches for fields tagged with bson:"_id" or db:"pk".
-// Supports nested structs and maps.
+// IDOf returns the top-level MongoDB _id encoded by document.
 //
-// Example:
-//
-//	type User struct {
-//	    ID string `bson:"_id"`
-//	}
-//	user := &User{ID: "123"}
-//	id := GetID(user) // returns "123"
-func GetID(model any) any {
-	modelValue := reflect.ValueOf(model)
-	k := modelValue.Kind()
-	for k == reflect.Pointer || k == reflect.UnsafePointer {
-		if modelValue.IsNil() {
-			return nil
+// Struct fields must be tagged bson:"_id". IDs inside bson:",inline" structs
+// and string-keyed maps are supported. IDOf never panics for unsupported input.
+func IDOf(document any) (any, bool) {
+	visited := make(map[valueVisit]struct{})
+	return idFromValue(reflect.ValueOf(document), visited)
+}
+
+type valueVisit struct {
+	modelType reflect.Type
+	pointer   uintptr
+}
+
+func idFromValue(value reflect.Value, visited map[valueVisit]struct{}) (any, bool) {
+	for value.IsValid() && value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return nil, false
 		}
-		modelValue = modelValue.Elem()
-		k = modelValue.Kind()
+		value = value.Elem()
 	}
 
-	// tag `db:"pk"` or `bson:"_id"`
-	if k == reflect.Struct {
-		// Iterate over all available fields and read the tag value
-		modelType := modelValue.Type()
-		for i := 0; i < modelType.NumField(); i++ {
-			fieldType := modelType.Field(i)
+	for value.IsValid() && value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return nil, false
+		}
+		visit := valueVisit{modelType: value.Type(), pointer: value.Pointer()}
+		if _, exists := visited[visit]; exists {
+			return nil, false
+		}
+		visited[visit] = struct{}{}
+		value = value.Elem()
+		for value.IsValid() && value.Kind() == reflect.Interface {
+			if value.IsNil() {
+				return nil, false
+			}
+			value = value.Elem()
+		}
+	}
 
-			// skip unexported fields
+	if !value.IsValid() {
+		return nil, false
+	}
+
+	switch value.Kind() {
+	case reflect.Struct:
+		modelType := value.Type()
+		for index := 0; index < modelType.NumField(); index++ {
+			fieldType := modelType.Field(index)
 			if !fieldType.IsExported() {
 				continue
 			}
 
-			fieldValue := modelValue.Field(i)
-			fieldKind := fieldValue.Kind()
-
-			// `db:"pk"`
-			tag := fieldType.Tag.Get(TagName)
-			if tag != "" {
-				dbTags := ParseTag(tag)
-				if dbTags.PrimaryKey {
-					return modelValue.Field(i).Interface()
-				}
-			}
-
-			// `bson:"_id"`
-			tag = fieldType.Tag.Get("bson")
-			if tag != "" && strings.HasPrefix(tag, "_id") {
-				return modelValue.Field(i).Interface()
-			}
-
-			// recursive search
-			if fieldKind == reflect.Pointer ||
-				fieldKind == reflect.UnsafePointer ||
-				fieldKind == reflect.Struct {
-				id := GetID(fieldValue.Interface())
-				if id != nil {
-					return id
-				}
+			fieldInfo := parseBSONField(fieldType)
+			if fieldInfo.skip {
 				continue
 			}
+			fieldValue := value.Field(index)
+			if fieldInfo.name == "_id" {
+				return fieldValue.Interface(), true
+			}
+			if fieldInfo.inline {
+				if id, found := idFromValue(fieldValue, visited); found {
+					return id, true
+				}
+			}
+		}
+	case reflect.Map:
+		keyType := value.Type().Key()
+		if keyType.Kind() != reflect.String {
+			return nil, false
+		}
+		key := reflect.New(keyType).Elem()
+		key.SetString("_id")
+		id := value.MapIndex(key)
+		if id.IsValid() {
+			return id.Interface(), true
 		}
 	}
+	return nil, false
+}
 
-	if k == reflect.Map {
-		// take value of "_id"
-		val := modelValue.MapIndex(reflect.ValueOf("_id"))
-		if val.Kind() != reflect.Invalid {
-			return val.Interface()
+// IndexDefinition describes one index declared by model tags.
+type IndexDefinition struct {
+	// Name is empty for an automatically named single-field index.
+	Name string
+
+	// Keys contains ordered ascending field paths.
+	Keys bson.D
+
+	// Unique indicates whether MongoDB must enforce uniqueness.
+	Unique bool
+}
+
+// IndexesFor returns the ordered index definitions declared on T.
+//
+// Fields support db:"index", db:"unique", db:"index=name", and
+// db:"unique=name". Reusing a name builds a compound index in struct order.
+// Nested structs use dotted BSON paths; bson:",inline" fields remain top-level.
+func IndexesFor[T any]() ([]IndexDefinition, error) {
+	modelType := reflect.TypeFor[T]()
+	for modelType.Kind() == reflect.Pointer {
+		modelType = modelType.Elem()
+	}
+	if modelType.Kind() != reflect.Struct || modelType.Name() == "" {
+		return nil, ErrInvalidModelName
+	}
+
+	parser := indexParser{
+		definitions: make([]IndexDefinition, 0),
+		groups:      make(map[string]int),
+		stack:       make(map[reflect.Type]bool),
+	}
+	err := parser.parseFields(modelType, "")
+	if err != nil {
+		return nil, err
+	}
+	return compactIndexDefinitions(parser.definitions)
+}
+
+type bsonFieldInfo struct {
+	name   string
+	inline bool
+	skip   bool
+}
+
+func parseBSONField(field reflect.StructField) bsonFieldInfo {
+	info := bsonFieldInfo{name: strings.ToLower(field.Name)}
+	tag, exists := field.Tag.Lookup("bson")
+	if !exists {
+		return info
+	}
+	if tag == "-" {
+		info.skip = true
+		return info
+	}
+
+	parts := strings.Split(tag, ",")
+	if parts[0] != "" {
+		info.name = parts[0]
+	}
+	for _, option := range parts[1:] {
+		if option == "inline" {
+			info.inline = true
+		}
+	}
+	return info
+}
+
+type indexTag struct {
+	index      bool
+	indexName  string
+	unique     bool
+	uniqueName string
+}
+
+func parseIndexTag(tag string) (indexTag, error) {
+	result := indexTag{}
+	for _, rawPart := range strings.Split(tag, ",") {
+		part := strings.TrimSpace(rawPart)
+		if part == "" {
+			continue
+		}
+
+		pieces := strings.SplitN(part, "=", 2)
+		kind := strings.ToLower(strings.TrimSpace(pieces[0]))
+		name := ""
+		if len(pieces) == 2 {
+			name = strings.TrimSpace(pieces[1])
+			if name == "" {
+				return indexTag{}, fmt.Errorf("%w: %q has an empty name", ErrInvalidIndexDeclaration, part)
+			}
+		}
+
+		switch kind {
+		case "index":
+			if result.index && result.indexName != name {
+				return indexTag{}, fmt.Errorf("%w: index is declared more than once", ErrInvalidIndexDeclaration)
+			}
+			result.index = true
+			result.indexName = name
+		case "unique":
+			if result.unique && result.uniqueName != name {
+				return indexTag{}, fmt.Errorf("%w: unique is declared more than once", ErrInvalidIndexDeclaration)
+			}
+			result.unique = true
+			result.uniqueName = name
+		default:
+			return indexTag{}, fmt.Errorf("%w: unsupported option %q", ErrInvalidIndexDeclaration, kind)
+		}
+	}
+	if !result.index && !result.unique {
+		return indexTag{}, fmt.Errorf("%w: declaration is empty", ErrInvalidIndexDeclaration)
+	}
+	return result, nil
+}
+
+type indexParser struct {
+	definitions []IndexDefinition
+	groups      map[string]int
+	stack       map[reflect.Type]bool
+}
+
+func (p *indexParser) parseFields(modelType reflect.Type, prefix string) error {
+	if p.stack[modelType] {
+		return nil
+	}
+	p.stack[modelType] = true
+	defer delete(p.stack, modelType)
+
+	for index := 0; index < modelType.NumField(); index++ {
+		fieldType := modelType.Field(index)
+		if !fieldType.IsExported() {
+			continue
+		}
+
+		fieldInfo := parseBSONField(fieldType)
+		if fieldInfo.skip {
+			continue
+		}
+
+		fieldPath := joinFieldPath(prefix, fieldInfo.name)
+		dbTag, hasIndexTag := fieldType.Tag.Lookup(indexTagName)
+		if hasIndexTag && strings.TrimSpace(dbTag) != "" {
+			if fieldInfo.inline {
+				return fmt.Errorf("%w: inline field %s cannot be indexed directly", ErrInvalidIndexDeclaration, fieldType.Name)
+			}
+			declaration, err := parseIndexTag(dbTag)
+			if err != nil {
+				return fmt.Errorf("field %s: %w", fieldType.Name, err)
+			}
+			if err := p.appendDeclarations(fieldPath, declaration); err != nil {
+				return fmt.Errorf("field %s: %w", fieldType.Name, err)
+			}
+			continue
+		}
+
+		innerType := fieldType.Type
+		for innerType.Kind() == reflect.Pointer {
+			innerType = innerType.Elem()
+		}
+		if innerType.Kind() != reflect.Struct {
+			continue
+		}
+
+		innerPrefix := fieldPath
+		if fieldInfo.inline {
+			innerPrefix = prefix
+		}
+		if err := p.parseFields(innerType, innerPrefix); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// CompoundIndex represents a compound index configuration.
-// It defines the fields that make up the index and whether it should be unique.
-type CompoundIndex struct {
-	Fields []string
-	Unique bool
+func (p *indexParser) appendDeclarations(fieldPath string, tag indexTag) error {
+	if tag.index && tag.unique && tag.indexName == tag.uniqueName {
+		return p.appendDefinition(fieldPath, tag.uniqueName, true)
+	}
+	if tag.index {
+		if err := p.appendDefinition(fieldPath, tag.indexName, false); err != nil {
+			return err
+		}
+	}
+	if tag.unique {
+		return p.appendDefinition(fieldPath, tag.uniqueName, true)
+	}
+	return nil
 }
 
-// ParseModelIndexes parses struct tags to extract index configuration.
-// Returns the model name and a map of index configurations.
-// Supports both single and compound indexes with custom naming.
-func ParseModelIndexes(model any) (modelName string, indexInfo map[string]*CompoundIndex) {
-	indexInfo = make(map[string]*CompoundIndex)
-	if model == nil {
-		return
-	}
-
-	modelType := reflect.TypeOf(model)
-	for modelType.Kind() == reflect.Pointer {
-		modelType = modelType.Elem()
-	}
-	if modelType.Kind() != reflect.Struct {
-		return
-	}
-
-	modelName = ToSnake(modelType.Name())
-	visited := make(map[reflect.Type]bool)
-	parseIndexFields(modelType, indexInfo, visited)
-	return
-}
-
-func parseIndexFields(modelType reflect.Type, indexInfo map[string]*CompoundIndex, visited map[reflect.Type]bool) {
-	if visited[modelType] {
-		return
-	}
-	visited[modelType] = true
-
-	for i := 0; i < modelType.NumField(); i++ {
-		fieldType := modelType.Field(i)
-		if !fieldType.IsExported() {
-			continue
-		}
-
-		bsonTag := fieldType.Tag.Get("bson")
-		if bsonTag == "-" {
-			continue
-		}
-
-		indexName := strings.Split(bsonTag, ",")[0]
-		if indexName == "" {
-			indexName = ToSnake(fieldType.Name)
-		}
-
-		tag := fieldType.Tag.Get(TagName)
-		if tag == "" {
-			innerType := fieldType.Type
-			for innerType.Kind() == reflect.Pointer {
-				innerType = innerType.Elem()
-			}
-			if innerType.Kind() == reflect.Struct {
-				parseIndexFields(innerType, indexInfo, visited)
-			}
-			continue
-		}
-
-		dbTags := ParseTag(tag)
-		if dbTags.Unique {
-			if dbTags.UniqueName == "" {
-				dbTags.UniqueName = indexName
-			}
-			if indexInfo[dbTags.UniqueName] == nil {
-				index := &CompoundIndex{
-					Fields: make([]string, 0),
-					Unique: true,
-				}
-				indexInfo[dbTags.UniqueName] = index
-			}
-			indexInfo[dbTags.UniqueName].Fields = append(indexInfo[dbTags.UniqueName].Fields, indexName)
-		}
-		if dbTags.Index {
-			if dbTags.IndexName == "" {
-				dbTags.IndexName = indexName
-			}
-			if indexInfo[dbTags.IndexName] == nil {
-				index := &CompoundIndex{
-					Fields: make([]string, 0),
-					Unique: false,
-				}
-				indexInfo[dbTags.IndexName] = index
-			}
-			indexInfo[dbTags.IndexName].Fields = append(indexInfo[dbTags.IndexName].Fields, indexName)
-		}
-	}
-}
-
-// TagInfo represents parsed database tag information.
-type TagInfo struct {
-	// Unique indicates if the field should have a unique index.
-	Unique bool
-
-	// UniqueName specifies the name for the unique index (for compound indexes).
-	UniqueName string
-
-	// Index indicates if the field should have a regular index.
-	Index bool
-
-	// IndexName specifies the name for the index (for compound indexes).
-	IndexName string
-
-	// PrimaryKey indicates if the field is the primary key.
-	PrimaryKey bool
-}
-
-// ParseTag parses a database tag string and returns TagInfo.
-// Format: index=name,unique=name,pk
-//
-// Example:
-//
-//	info := ParseTag("index=user_name,unique=user_email")
-//	// info.Index = true, info.IndexName = "user_name"
-//	// info.Unique = true, info.UniqueName = "user_email"
-func ParseTag(tag string) TagInfo {
-	info := TagInfo{}
-
-	multTypes := strings.Split(strings.Trim(tag, ", ;"), ",")
-	for _, v := range multTypes {
-		arr := strings.Split(v, "=")
-		if len(arr) > 0 {
-			k := strings.ToLower(strings.TrimSpace(arr[0]))
-			if k == "" {
-				continue
-			}
-
-			val := ""
-			if len(arr) > 1 {
-				val = strings.TrimSpace(arr[1])
-			}
-
-			switch k {
-			case "unique":
-				info.Unique = true
-				info.UniqueName = val
-			case "index":
-				info.Index = true
-				info.IndexName = val
-			case "pk":
-				info.PrimaryKey = true
-			}
-		}
-	}
-
-	return info
-}
-
-// NewModelType creates a new instance of the given model type.
-// Returns a pointer to a new instance of the same type.
-func NewModelType(model any) any {
-	modelVal := reflect.ValueOf(model)
-	k := modelVal.Kind()
-	for k == reflect.Pointer || k == reflect.UnsafePointer {
-		if modelVal.IsNil() {
-			return nil
-		}
-		modelVal = modelVal.Elem()
-		k = modelVal.Kind()
-	}
-	if k != reflect.Struct {
+func (p *indexParser) appendDefinition(fieldPath, name string, unique bool) error {
+	key := bson.E{Key: fieldPath, Value: 1}
+	if name == "" {
+		definition := IndexDefinition{Keys: bson.D{key}, Unique: unique}
+		p.definitions = append(p.definitions, definition)
 		return nil
 	}
 
-	return reflect.New(modelVal.Type()).Interface()
+	definitionIndex, exists := p.groups[name]
+	if !exists {
+		definition := IndexDefinition{Name: name, Keys: bson.D{key}, Unique: unique}
+		p.definitions = append(p.definitions, definition)
+		p.groups[name] = len(p.definitions) - 1
+		return nil
+	}
+
+	definition := &p.definitions[definitionIndex]
+	if definition.Unique != unique {
+		return fmt.Errorf("%w: index group %q mixes unique and non-unique fields", ErrInvalidIndexDeclaration, name)
+	}
+	for _, existingKey := range definition.Keys {
+		if existingKey.Key == fieldPath {
+			return fmt.Errorf("%w: index group %q repeats field %q", ErrInvalidIndexDeclaration, name, fieldPath)
+		}
+	}
+	definition.Keys = append(definition.Keys, key)
+	return nil
 }
 
-// ToEntity converts a MongoDB document to a typed struct.
-// Uses BSON marshaling/unmarshaling for type conversion.
-//
-// Example:
-//
-//	doc := mongo.Map().Set("name", "John").Set("age", 30)
-//	user := mongo.ToEntity[User](doc)
-func ToEntity[T any](m M) *T {
-	o := new(T)
-	raw, err := bson.Marshal(m)
+func joinFieldPath(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	return prefix + "." + name
+}
+
+func compactIndexDefinitions(definitions []IndexDefinition) ([]IndexDefinition, error) {
+	results := make([]IndexDefinition, 0, len(definitions))
+	for _, definition := range definitions {
+		duplicateIndex := -1
+		for index, existing := range results {
+			if indexKeysEqual(existing.Keys, definition.Keys) {
+				duplicateIndex = index
+				break
+			}
+		}
+		if duplicateIndex < 0 {
+			results = append(results, definition)
+			continue
+		}
+
+		existing := results[duplicateIndex]
+		if existing.Unique == definition.Unique {
+			return nil, fmt.Errorf("%w: keys %v are declared more than once", ErrInvalidIndexDeclaration, definition.Keys)
+		}
+		if definition.Unique {
+			results[duplicateIndex] = definition
+		}
+	}
+	return results, nil
+}
+
+func indexKeysEqual(left, right bson.D) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index].Key != right[index].Key {
+			return false
+		}
+		if fmt.Sprint(left[index].Value) != fmt.Sprint(right[index].Value) {
+			return false
+		}
+	}
+	return true
+}
+
+// Decode converts a BSON-compatible document to T.
+func Decode[T any](document any) (*T, error) {
+	raw, err := bson.Marshal(document)
+	if err != nil {
+		return nil, err
+	}
+
+	result := new(T)
+	if err := bson.Unmarshal(raw, result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// MustDecode converts a BSON-compatible document to T and panics on failure.
+// Use Decode when malformed or schema-incompatible input is possible.
+func MustDecode[T any](document any) *T {
+	result, err := Decode[T](document)
 	if err != nil {
 		panic(err)
 	}
-	if err := bson.Unmarshal(raw, o); err != nil {
-		panic(err)
-	}
-	return o
+	return result
 }
 
-// ToEntities converts a slice of MongoDB documents to a slice of typed structs.
-//
-// Example:
-//
-//	docs := []mongo.M{...}
-//	users := mongo.ToEntities[User](docs)
-func ToEntities[T any](items []M) []*T {
-	var os []*T
-	for _, v := range items {
-		os = append(os, ToEntity[T](v))
+// DecodeMany converts MongoDB documents to T and identifies a failing item.
+func DecodeMany[T any](documents []M) ([]*T, error) {
+	results := make([]*T, 0, len(documents))
+	for index, document := range documents {
+		result, err := Decode[T](document)
+		if err != nil {
+			return nil, fmt.Errorf("decode document %d: %w", index, err)
+		}
+		results = append(results, result)
 	}
-	return os
-}
-
-// RandInRange returns a random integer in the range [minInclusive, maxExclusive).
-// Uses a thread-safe random number generator.
-//
-// Example:
-//
-//	num := mongo.RandInRange(1, 100) // returns random number 1-99
-func RandInRange(minInclusive, maxExclusive int) int {
-	return rand.IntN(maxExclusive-minInclusive) + minInclusive
-}
-
-// SequentialID generates a unique sequential identifier.
-// Combines current timestamp with random number for uniqueness.
-//
-// Example:
-//
-//	id := mongo.SequentialID() // returns something like "123456789012345"
-func SequentialID() string {
-	text := fmt.Sprintf("%d%d", time.Now().UTC().UnixMicro(), RandInRange(100, 1000))
-	var sb strings.Builder
-	for _, v := range text {
-		sb.WriteRune(v + 49)
-	}
-	return sb.String()
+	return results, nil
 }

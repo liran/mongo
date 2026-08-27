@@ -29,7 +29,6 @@ type Tx struct {
 //		return err
 //	})
 func (d *Database) Transaction(ctx context.Context, fn func(*Tx) error) error {
-	ctx = contextOrBackground(ctx)
 	transactionOptions := options.Transaction().SetReadPreference(readpref.Primary())
 	sessionOptions := options.Session().SetDefaultTransactionOptions(transactionOptions)
 	session, err := d.Client.StartSession(sessionOptions)
@@ -96,5 +95,5 @@ func (tx *Tx) Find[T any](filter ...any) *Query[T] {
 }
 
 func txCollection[T any](tx *Tx) *Collection[T] {
-	return newCollection[T](tx.database, tx.ctx, modelName[T]())
+	return newCollection[T](tx.database, tx.ctx, CollectionName[T]())
 }
